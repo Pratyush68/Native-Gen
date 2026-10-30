@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Room Builder</title>
+<style>
+:root{--bg:#14161a;--panel:#1d2026;--line:#2c313a;--tx:#e6e8ec;--mut:#8b93a1;--acc:#3b5bdb}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:13px system-ui,sans-serif;display:flex;height:100vh;overflow:hidden}
+aside{background:var(--panel);display:flex;flex-direction:column;min-height:0}
+#left{width:300px;border-right:1px solid var(--line)}#right{width:290px;border-left:1px solid var(--line);overflow:auto}
+h1{font-size:14px;margin:0;padding:12px 14px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between}
+#conn{font-size:11px;color:var(--mut);font-weight:400}#conn.ok{color:#51cf66}#conn.bad{color:#ff6b6b}
+.sec{padding:10px 14px;border-bottom:1px solid var(--line)}.sec h2{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin:0 0 8px}
+input[type=text],input[type=number],textarea,select{width:100%;background:#12141a;border:1px solid var(--line);border-radius:6px;color:var(--tx);padding:6px 8px;font:inherit}
+textarea{resize:vertical;height:54px}
+button,label.b{background:#2a2f38;color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px;display:inline-block}
+button.p{background:var(--acc);border-color:var(--acc)}button.go{background:#2b8a3e;border-color:#2b8a3e}button:disabled{opacity:.45;cursor:default}button.on{background:var(--acc);border-color:var(--acc)}
+.r{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.st{font-size:10px;color:var(--mut)}
+#log{flex:1;min-height:60px;overflow:auto;font:11px ui-monospace,monospace;color:var(--mut);padding:8px 14px;white-space:pre-wrap}
+main{flex:1;position:relative;min-width:0;display:flex;flex-direction:column}
+#tabs{display:flex;gap:6px;padding:10px;flex:none}
+#gal{flex:1;overflow:auto;padding:4px 14px 70px;display:none;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;align-content:start}
+#galbar{position:absolute;left:0;right:0;bottom:0;padding:10px 14px;background:linear-gradient(transparent,#14161a 40%);display:none;gap:8px;align-items:center}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px;cursor:pointer;user-select:none}
+.card.sel{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc)}.card canvas{width:100%;aspect-ratio:1;background:#0e1013;border-radius:6px;display:block}
+.card .t{display:flex;align-items:center;gap:6px;margin-top:5px}.card .t input[type=text]{background:none;border:0;padding:0}.sw{width:10px;height:10px;border-radius:2px;flex:none}
+.badge{font-size:10px;padding:1px 5px;border-radius:8px;background:#2a2f38;color:var(--mut)}.badge.ok{background:#1f4d2e;color:#8ce99a}.badge.err{background:#5c1f1f;color:#ffa8a8}.badge.busy{background:#5c4a1f;color:#ffe08a}
+#lay{flex:1;display:none;flex-direction:column;min-height:0}
+#bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:0 10px 8px}#bar select,#bar input{width:auto}#bar input[type=number]{width:64px}#bar input[type=text]{width:120px}
+#split{flex:1;display:flex;min-height:0;gap:2px}#c2w,#c3w{position:relative;flex:1;min-width:0}#c2,#c3{position:absolute;inset:0;width:100%;height:100%}
+#hint{padding:4px 12px;color:var(--mut);font-size:12px;flex:none}
+#prev{width:100%;aspect-ratio:1;object-fit:contain;background:#0e1013;border-radius:8px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}.g3 label{font-size:10px;color:var(--mut)}
+.layer{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:6px;cursor:pointer;font-size:12px}.layer.sel{background:#262c37}.layer .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.layer .on{color:var(--mut);font-size:10px}
+</style></head><body>
+<aside id="left">
+<h1>Room Builder <span id="conn">checking…</span></h1>
+<div class="sec"><h2>1 · Room photo</h2>
+<label class="b">Choose image<input id="photo" type="file" accept="image/*" hidden></label> <span id="pname" class="st"></span>
+<div style="margin-top:8px"><textarea id="prompt">bed, desk, chair, bookshelf, rug, television, backpack, door, wardrobe, lamp, plant, dresser</textarea><div class="st" style="margin-top:3px">comma-separated labels, one SAM 3.1 job each (add :N to allow N instances)</div></div>
+<input id="lic" type="text" placeholder="Photo source / licence (goes in provenance)" style="margin-top:6px">
+<div class="r"><button id="detect" class="p" disabled>Detect + crop assets</button></div></div>
+<div class="sec"><h2>2 · Refine 2D assets <span class="st">(Qwen-Image-Edit 2511, open weights)</span></h2>
+<div class="st" id="selinfo">click cards to select · shift/ctrl-click for several</div>
+<div class="r"><button id="refSel" disabled>Refine selected</button><button id="refAll" disabled>Refine all kept</button></div></div>
+<div class="sec"><h2>Undo</h2><div class="r" style="margin-top:0"><button id="undo">Undo (Ctrl+Z)</button><button id="redo">Redo (Ctrl+Y)</button></div></div>
+<div id="log"></div>
+</aside>
+<main>
+<div id="tabs"><button id="t1" class="on">1 · Detected objects</button><button id="t2" disabled title="confirm assets first">2 · Layout: top-down + 3D</button></div>
+<div id="gal"></div>
+<div id="galbar"><button id="confirm" class="go" disabled>Confirm assets → Next: Layout (arrange the objects in the room, top-down + 3D)</button><span class="st" id="galinfo"></span></div>
+<div id="lay">
+<div id="bar">
+<button id="bundo">↶ Undo</button><button id="bredo">↷ Redo</button>
+<select id="rpre" title="room size"><option value="">Room size…</option><option>300x300</option><option>400x300</option><option>400x400</option><option>500x400</option><option>500x500</option><option>600x500</option><option>800x600</option></select>
+<input id="rw" type="number" title="room width cm"> × <input id="rd" type="number" title="room depth cm"> <span class="st">cm (estimated)</span>
+<button id="auto">Auto-layout from photo</button><button id="sUp">All ×1.1</button><button id="sDn">All ×0.9</button><button id="mid">Colour ID</button>
+<input id="lname" type="text" placeholder="layout name"><button id="lsave">Save layout</button><select id="lload"><option value="">Load saved…</option></select><label class="b">Open file<input id="fj" type="file" accept=".json" hidden></label><button id="mex">Export .json</button>
+<button id="gen" class="go">Confirm layout &amp; generate all meshes</button>
+</div>
+<div id="split"><div id="c2w"><canvas id="c2"></canvas></div><div id="c3w"><div id="c3" style="position:absolute;inset:0"></div></div></div>
+</div>
+<div id="hint"></div>
+</main>
+<aside id="right">
+<div class="sec"><h2>Selected asset <span class="st" id="multi"></span></h2><img id="prev" alt=""><div id="none" class="st" style="margin-top:6px">nothing selected</div>
+<div id="insp" style="display:none">
+<input id="iname" type="text" style="margin-top:8px">
+<div class="st" style="margin-top:6px">Context for refinement (what it is, material, colour…)</div><textarea id="ictx" placeholder="e.g. single bed with blue patterned quilt and wooden frame"></textarea>
+<div class="r"><label class="b">Reference image<input id="iref" type="file" accept="image/*" hidden></label><button id="iclr">Clear ref</button><span id="irefn" class="st"></span></div>
+<div class="r"><button id="iref1" class="p">Refine this</button><button id="iregen" class="go">Refine + regenerate mesh</button><button id="irev">Original cutout</button></div>
+<div class="st" style="margin-top:10px">Size (cm) <span id="fp"></span></div>
+<div class="g3"><div><label>Width</label><input id="iw" type="number" min="5"></div><div><label>Depth</label><input id="id" type="number" min="5"></div><div><label>Height</label><input id="ih" type="number" min="5"></div></div>
+<div class="g3" style="margin-top:6px"><div><label>Rotate °</label><input id="ir" type="number"></div><div><label>X cm</label><input id="ix" type="number"></div><div><label>Y cm</label><input id="iy" type="number"></div></div>
+</div></div>
+<div class="sec"><h2>Layers <span class="st">(top → bottom)</span></h2><div id="layers" class="st">none yet</div></div>
+</aside>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+const $=id=>document.getElementById(id);
+const log=m=>{const l=$('log');l.textContent+=m+'\n';l.scrollTop=l.scrollHeight};
+let A=[],SEL=new Set(),sel=null,idMode=false,photoFile=null,photoImg=null,view='1',confirmed=false;const ROOM={w:400,d:300};
+const pal=i=>`hsl(${Math.round((i*137.508)%360)},80%,55%)`;
+const PRIOR={bed:[100,200,60],desk:[120,60,75],chair:[50,50,90],bookshelf:[80,30,180],rug:[160,230,2],television:[55,45,45],backpack:[30,20,45],door:[90,10,200],wardrobe:[100,60,190],lamp:[30,30,45],plant:[35,35,50],dresser:[90,45,90],sofa:[200,90,85],armchair:[85,85,90],table:[110,60,75],nightstand:[40,40,55],box:[40,40,40]};
+const prior=l=>{l=l.toLowerCase();for(const k in PRIOR)if(l.includes(k))return PRIOR[k];return[60,60,60]};
+const byId=id=>A.find(a=>a.id===id);const cur=()=>A[sel]||null;
+
+/* ---------------- API (Comfy Cloud via local proxy) ---------------- */
+const api=async(path,opt={})=>{const r=await fetch(path,opt);if(!r.ok){let t='';try{t=await r.text()}catch{};throw new Error(`${r.status} ${path.split('?')[0]} ${t.slice(0,200)}`)}return r};
+async function upload(blob,name){const f=new FormData();f.append('image',blob,name);f.append('type','input');f.append('overwrite','true');
+ const j=await(await api('/api/upload/image',{method:'POST',body:f})).json();return j.subfolder?`${j.subfolder}/${j.name}`:j.name}
+async function submit(prompt){const r=await fetch('/api/prompt',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt})});
+ const j=await r.json().catch(()=>({}));if(!r.ok||j.error||!j.prompt_id)throw new Error('submit failed: '+JSON.stringify(j).slice(0,400));return j.prompt_id}
+const JOBS={};
+async function wait(id,label){const T=['completed','success'],E=['failed','error','non_retryable_error','lost','cancelled'];const t0=Date.now();
+ for(;;){await new Promise(r=>setTimeout(r,2500));let j=null;try{j=await(await api(`/api/jobs/${id}`)).json()}catch(e){try{j={status:(await(await api(`/api/job/${id}/status`)).json()).status}}catch(e2){j={status:'?'}}}
+  const s=j.status;JOBS[id]=j;if(T.includes(s))return;if(E.includes(s))throw new Error(`${label}: job ${s} ${(j.execution_error&&j.execution_error.exception_message)||''}`);
+  if(Date.now()-t0>25*60e3)throw new Error(label+': timeout');}}
+async function outputs(id){const j=JOBS[id];if(j&&j.outputs)return j.outputs;const x=await(await api(`/api/jobs/${id}`)).json();if(x.outputs)return x.outputs;throw new Error('no outputs for '+id)}
+const files=o=>{const r=[];(function w(x){if(Array.isArray(x))x.forEach(w);else if(x&&typeof x==='object'){if(x.filename)r.push(x);else Object.values(x).forEach(w)}})(o);return r};
+const getFile=async f=>(await api(`/api/view?filename=${encodeURIComponent(f.filename)}&subfolder=${encodeURIComponent(f.subfolder||'')}&type=${f.type||'output'}`)).blob();
+const loadImg=blob=>new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=URL.createObjectURL(blob)});
+const wf=async n=>(await(await fetch(`workflows/${n}.json`)).json());
+fetch('/api/user').then(r=>{$('conn').textContent=r.ok?'cloud connected':'proxy up · cloud '+r.status;$('conn').className=r.ok?'ok':'bad'}).catch(()=>{$('conn').textContent='proxy not running';$('conn').className='bad'});
+
+/* ---------------- undo / redo (layout state) ---------------- */
+const U=[],RE=[];
+const snap=()=>JSON.stringify({room:{...ROOM},a:A.map(a=>({id:a.id,x:a.x,y:a.y,w:a.w,d:a.d,h:a.h,rot:a.rot,include:a.include,label:a.label,z:a.z||0}))});
+function pushUndo(){const s=snap();if(U[U.length-1]!==s){U.push(s);if(U.length>150)U.shift()}RE.length=0;updUndo()}
+function restore(s){const j=JSON.parse(s);ROOM.w=j.room.w;ROOM.d=j.room.d;j.a.forEach(r=>{const a=byId(r.id);if(a)Object.assign(a,r)});syncRoom();renderAll();update3()}
+function undo(){if(!U.length)return;RE.push(snap());restore(U.pop());updUndo()}
+function redo(){if(!RE.length)return;U.push(snap());restore(RE.pop());updUndo()}
+function updUndo(){for(const id of ['undo','bundo'])$(id).disabled=!U.length;for(const id of ['redo','bredo'])$(id).disabled=!RE.length}
+$('undo').onclick=$('bundo').onclick=undo;$('redo').onclick=$('bredo').onclick=redo;
+
+/* ---------------- detect ---------------- */
+$('photo').onchange=async e=>{photoFile=e.target.files[0];$('pname').textContent=photoFile?photoFile.name:'';$('detect').disabled=!photoFile;if(photoFile)photoImg=await loadImg(photoFile)};
+const labelsOf=()=>$('prompt').value.split(',').map(s=>s.trim()).filter(Boolean);
+async function detectLabel(name,raw,k){const g={"1":{inputs:{image:name},class_type:'LoadImage'},"2":{inputs:{ckpt_name:'sam3.1_multiplex_fp16.safetensors'},class_type:'CheckpointLoaderSimple'},
+ "t":{inputs:{text:raw,clip:["2",1]},class_type:'CLIPTextEncode'},"s":{inputs:{threshold:0.5,refine_iterations:2,individual_masks:true,model:["2",0],image:["1",0],conditioning:["t",0]},class_type:'SAM3_Detect'},
+ "b":{inputs:{source:["s",1]},class_type:'PreviewAny'},"m":{inputs:{mask:["s",0]},class_type:'MaskToImage'},"v":{inputs:{filename_prefix:'room/mask_'+k,images:["m",0]},class_type:'SaveImage'}};
+ const id=await submit(g);await wait(id,'detect '+raw);const o=await outputs(id);let boxes=[];try{const j=JSON.parse((o.b.text||[])[0]);boxes=Array.isArray(j[0])?j[0]:j}catch(e){}
+ const masks=(o.v?files(o.v):[]).sort((a,b)=>a.filename.localeCompare(b.filename,undefined,{numeric:true}));return{boxes,masks}}
+function makeCut(photo,maskImg,b){const W=photo.width,H=photo.height;const mc=document.createElement('canvas');mc.width=W;mc.height=H;const mx=mc.getContext('2d');mx.drawImage(maskImg,0,0,W,H);const md=mx.getImageData(0,0,W,H).data;
+ const full=document.createElement('canvas');full.width=W;full.height=H;const fx=full.getContext('2d');fx.drawImage(photo,0,0);const fd=fx.getImageData(0,0,W,H);
+ let x0=W,y0=H,x1=0,y1=0;for(let i=0;i<W*H;i++){const al=md[i*4];fd.data[i*4+3]=al;if(al>128){const px=i%W,py=(i/W)|0;if(px<x0)x0=px;if(px>x1)x1=px;if(py<y0)y0=py;if(py>y1)y1=py}}
+ fx.putImageData(fd,0,0);if(x1<=x0||y1<=y0){x0=Math.max(0,b.x|0);y0=Math.max(0,b.y|0);x1=Math.min(W,x0+(b.width|0));y1=Math.min(H,y0+(b.height|0))}
+ const cut=document.createElement('canvas');cut.width=Math.max(2,x1-x0);cut.height=Math.max(2,y1-y0);cut.getContext('2d').drawImage(full,x0,y0,cut.width,cut.height,0,0,cut.width,cut.height);
+ const S=1024,m=0.9,sc=Math.min(S*m/cut.width,S*m/cut.height),sq=document.createElement('canvas');sq.width=sq.height=S;const sx=sq.getContext('2d');sx.fillStyle='#808080';sx.fillRect(0,0,S,S);sx.drawImage(cut,(S-cut.width*sc)/2,(S-cut.height*sc)/2,cut.width*sc,cut.height*sc);return{cut,sq}}
+$('detect').onclick=async()=>{$('detect').disabled=true;try{
+ log('uploading photo…');const name=await upload(photoFile,'room_'+Date.now()+'.png');const photo=photoImg||await loadImg(photoFile);
+ const labels=labelsOf();log(`detecting ${labels.length} label(s) (SAM 3.1)…`);
+ const res=await Promise.all(labels.map((raw,k)=>detectLabel(name,raw,k).catch(e=>{log('  '+raw+': '+e.message.slice(0,160));return{boxes:[],masks:[]}})));
+ A=[];SEL.clear();sel=null;confirmed=false;let n=0;
+ for(const [k,r] of res.entries()){const lab=labels[k].split(':')[0].trim();const c=Math.min(r.boxes.length,r.masks.length);log(`  ${lab}: ${c} found`);
+  for(let i=0;i<c;i++){const b=r.boxes[i];const mi=await loadImg(await getFile(r.masks[i]));const{cut,sq}=makeCut(photo,mi,b);const origBlob=await new Promise(res=>sq.toBlob(res,'image/png'));const p=prior(lab);
+   A.push({id:'asset_'+String(n).padStart(2,'0'),label:lab+(c>1?' '+(i+1):''),base:lab,context:'',refBlob:null,refName:'',cut,origBlob,blob:origBlob,view:cut,refined:false,include:true,status:'',mesh:'',
+    w:p[0],d:p[1],h:p[2],x:0,y:0,rot:0,z:0,color:pal(n),glb:null,box:{cx:(b.x+b.width/2)/photo.width,bot:(b.y+b.height)/photo.height,w:b.width/photo.width},score:b.score});n++}}
+ log(`total: ${A.length} asset(s)`);U.length=0;RE.length=0;estimateRoom();autoLayout();sel=A.length?0:null;if(A.length)SEL.add(A[0].id);renderAll();show('1');
+}catch(e){log('ERROR '+e.message)}finally{$('detect').disabled=!photoFile}};
+
+/* ---------------- room + layout ---------------- */
+function estimateRoom(){const foot=A.reduce((s,a)=>s+(a.base==='rug'?0:a.w*a.d),0);const area=Math.max(foot*2.8,9e4);let W=Math.sqrt(area*1.25);const mx=Math.max(0,...A.map(a=>Math.max(a.w,a.d)));W=Math.max(W,mx*1.4);ROOM.w=Math.round(W/10)*10;ROOM.d=Math.round(Math.max(area/W,mx*1.1)/10)*10;syncRoom()}
+function autoLayout(){A.forEach(a=>{a.x=a.box.cx*ROOM.w;a.y=Math.max(a.d/2,Math.min(ROOM.d-a.d/2,a.box.bot*ROOM.d-a.d/2))})}
+const syncRoom=()=>{$('rw').value=ROOM.w;$('rd').value=ROOM.d};
+$('rw').onchange=e=>{pushUndo();ROOM.w=Math.max(100,+e.target.value);draw2();update3()};$('rd').onchange=e=>{pushUndo();ROOM.d=Math.max(100,+e.target.value);draw2();update3()};
+$('rpre').onchange=e=>{if(!e.target.value)return;pushUndo();const[w,d]=e.target.value.split('x').map(Number);ROOM.w=w;ROOM.d=d;syncRoom();e.target.value='';draw2();update3()};
+$('auto').onclick=()=>{pushUndo();estimateRoom();autoLayout();draw2();update3()};
+$('sUp').onclick=()=>{pushUndo();A.forEach(a=>{a.w*=1.1;a.d*=1.1;a.h*=1.1});draw2();inspector();update3()};$('sDn').onclick=()=>{pushUndo();A.forEach(a=>{a.w*=.9;a.d*=.9;a.h*=.9});draw2();inspector();update3()};
+
+/* stacking: an object whose centre lies on a larger object's footprint sits on top of it */
+const inside=(a,b)=>{const dx=a.x-b.x,dy=a.y-b.y,r=-b.rot*Math.PI/180,lx=dx*Math.cos(r)-dy*Math.sin(r),ly=dx*Math.sin(r)+dy*Math.cos(r);return Math.abs(lx)<b.w/2&&Math.abs(ly)<b.d/2};
+function parentOf(a){let best=null;for(const b of A){if(b===a||!b.include||b.base==='door')continue;if(b.w*b.d>a.w*a.d*1.3&&inside(a,b)&&(!best||b.w*b.d<best.w*best.d))best=b}return best}
+function elev(a,dep=0){const p=dep<4?parentOf(a):null;return p?elev(p,dep+1)+p.h:0}
+const drawOrder=()=>A.map((a,i)=>i).filter(i=>A[i].include).sort((i,j)=>{const a=A[i],b=A[j];return (a.z-b.z)||(elev(a)-elev(b))||(b.w*b.d-a.w*a.d)});
+function renderLayers(){const L=$('layers');if(!A.length){L.textContent='none yet';return}L.innerHTML='';[...drawOrder()].reverse().forEach(i=>{const a=A[i],p=parentOf(a);const d=document.createElement('div');d.className='layer'+(SEL.has(a.id)?' sel':'');
+ d.innerHTML=`<span class="sw" style="background:${a.color}"></span><span class="n">${a.label}</span><span class="on">${p?'on '+p.label:'floor'}</span><button style="padding:1px 5px" title="bring forward">▲</button><button style="padding:1px 5px" title="send back">▼</button>`;
+ d.onclick=e=>{if(e.target.tagName==='BUTTON')return;pick(a.id,e.shiftKey||e.ctrlKey||e.metaKey)};
+ const[bu,bd]=d.querySelectorAll('button');bu.onclick=()=>{pushUndo();a.z=(a.z||0)+1;draw2();renderLayers()};bd.onclick=()=>{pushUndo();a.z=(a.z||0)-1;draw2();renderLayers()};L.appendChild(d)})}
+
+/* ---------------- selection helpers ---------------- */
+function pick(id,add){const i=A.findIndex(a=>a.id===id);if(add){if(SEL.has(id)){SEL.delete(id);sel=SEL.size?A.findIndex(a=>a.id===[...SEL].pop()):null}else{SEL.add(id);sel=i}}else{SEL.clear();SEL.add(id);sel=i}renderAll()}
+const selected=()=>A.filter(a=>SEL.has(a.id));
+
+/* ---------------- refine (Qwen-Image-Edit 2511 on Comfy Cloud, open weights) ---------------- */
+function qwenGraph(img,ref,prompt,seed){const g={"u":{inputs:{unet_name:'qwen_image_edit_2511_fp8mixed.safetensors',weight_dtype:'default'},class_type:'UNETLoader'},"c":{inputs:{clip_name:'qwen_2.5_vl_7b_fp8_scaled.safetensors',type:'qwen_image',device:'default'},class_type:'CLIPLoader'},"v":{inputs:{vae_name:'qwen_image_vae.safetensors'},class_type:'VAELoader'},
+ "l":{inputs:{model:["u",0],lora_name:'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',strength_model:1},class_type:'LoraLoaderModelOnly'},"ms":{inputs:{model:["l",0],shift:3.1},class_type:'ModelSamplingAuraFlow'},"cn":{inputs:{model:["ms",0],strength:1},class_type:'CFGNorm'},
+ "i1":{inputs:{image:img},class_type:'LoadImage'},"sc":{inputs:{image:["i1",0]},class_type:'FluxKontextImageScale'},"enc":{inputs:{pixels:["sc",0],vae:["v",0]},class_type:'VAEEncode'},
+ "pp":{inputs:{clip:["c",0],prompt,vae:["v",0],image1:["sc",0]},class_type:'TextEncodeQwenImageEditPlus'},"pn":{inputs:{clip:["c",0],prompt:'',vae:["v",0],image1:["sc",0]},class_type:'TextEncodeQwenImageEditPlus'},
+ "rp":{inputs:{conditioning:["pp",0],reference_latents_method:'index_timestep_zero'},class_type:'FluxKontextMultiReferenceLatentMethod'},"rn":{inputs:{conditioning:["pn",0],reference_latents_method:'index_timestep_zero'},class_type:'FluxKontextMultiReferenceLatentMethod'},
+ "ks":{inputs:{model:["cn",0],seed,steps:4,cfg:1,sampler_name:'euler',scheduler:'simple',denoise:1,positive:["rp",0],negative:["rn",0],latent_image:["enc",0]},class_type:'KSampler'},"dec":{inputs:{samples:["ks",0],vae:["v",0]},class_type:'VAEDecode'},"sv":{inputs:{filename_prefix:'room/refined',images:["dec",0]},class_type:'SaveImage'}};
+ if(ref){g.i2={inputs:{image:ref},class_type:'LoadImage'};g.pp.inputs.image2=["i2",0];g.pn.inputs.image2=["i2",0]}return g}
+async function refine(a){a.status='refining';renderAll();try{
+ const name=await upload(a.origBlob,`${a.id}_in_${Date.now()}.png`);let ref=null;if(a.refBlob)ref=await upload(a.refBlob,`${a.id}_ref_${Date.now()}.png`);
+ const prompt=`Redraw this ${a.base} as one complete, clean, isolated object centred on a plain neutral grey background, whole object visible from a three-quarter front view. Remove any other objects, fragments or background. Keep the same colours, materials and illustration style.`+(ref?' Use the second image as a design reference for this object.':'')+(a.context?' '+a.context:'');
+ const id=await submit(qwenGraph(name,ref,prompt,Math.floor(Math.random()*1e9)));await wait(id,a.label);const o=await outputs(id);const f=files(o.sv||o)[0];if(!f)throw new Error('no image returned');
+ a.blob=await getFile(f);a.view=await loadImg(a.blob);a.refined=true;a.status='refined';a.glb=null;a.mesh='';log(`${a.label}: refined`)}catch(e){a.status='err';log('ERROR refine '+a.label+': '+e.message.slice(0,200))}renderAll()}
+$('refSel').onclick=async()=>{const t=selected();if(!t.length)return;$('refSel').disabled=$('refAll').disabled=true;await Promise.all(t.map(refine));updBtns()};
+$('refAll').onclick=async()=>{$('refSel').disabled=$('refAll').disabled=true;await Promise.all(A.filter(a=>a.include).map(refine));updBtns()};
+$('iref1').onclick=async()=>{const t=selected();if(!t.length)return;$('iref1').disabled=true;await Promise.all(t.map(refine));$('iref1').disabled=false};
+$('irev').onclick=()=>{for(const a of selected()){a.blob=a.origBlob;a.view=a.cut;a.refined=false;a.status='';a.glb=null;a.mesh=''}renderAll()};
+$('iregen').onclick=async()=>{const t=selected();if(!t.length)return;$('iregen').disabled=true;await Promise.all(t.map(async a=>{await refine(a);if(a.status!=='err')await meshFor(a)}));$('iregen').disabled=false};
+$('confirm').onclick=()=>{if(!A.some(a=>a.include))return;confirmed=true;$('t2').disabled=false;log('assets confirmed → layout');show('2')};
+
+/* ---------------- 3D meshes ---------------- */
+let MESH_BASE=null;
+async function meshFor(a){try{MESH_BASE=MESH_BASE||await wf('mesh_workflow');a.mesh='uploading';renderAll();const name=await upload(a.blob,`${a.id}_m_${Date.now()}.png`);const g=JSON.parse(JSON.stringify(MESH_BASE));g['122'].inputs.image=name;g['322'].inputs.filename_prefix='room/'+a.id;
+  a.mesh='generating';renderAll();log(`${a.label}: TRELLIS.2 running…`);const id=await submit(g);await wait(id,a.label);const o=await outputs(id);
+  const all=files(o);const f=all.find(f=>/\.(glb|gltf)$/i.test(f.filename))||all.find(f=>!/\.(png|jpe?g|webp|gif|txt|json)$/i.test(f.filename));if(!f){log(`${a.label}: no GLB. outputs = `+JSON.stringify(o).slice(0,600));throw new Error('no GLB')}
+  a.glbBlob=await getFile(f);a.glbName=f.filename;a.glb=await a.glbBlob.arrayBuffer();a.mesh='done';log(`${a.label}: mesh ready (${(a.glb.byteLength/1e6).toFixed(1)} MB)`);renderAll();sync3(a)
+ }catch(e){a.mesh='err';log('ERROR '+a.label+': '+e.message.slice(0,200));renderAll()}}
+$('gen').onclick=async()=>{const t=A.filter(a=>a.include&&!a.glb);if(!t.length){log('all kept objects already have meshes');return}$('gen').disabled=true;log(`generating ${t.length} mesh(es) for the locked layout…`);
+ for(const a of t)await meshFor(a);$('gen').disabled=false;log('meshes done: this is the 3D final look (drag objects, right-drag to pan, left-drag empty space to rotate)')};
+
+/* ---------------- gallery ---------------- */
+let lastClick=null;
+function updBtns(){const n=A.length,k=A.filter(a=>a.include).length;$('refSel').disabled=!SEL.size;$('refAll').disabled=!k;$('confirm').disabled=!k;$('galinfo').textContent=n?`${k} of ${n} kept · ${SEL.size} selected`:'';$('selinfo').textContent=n?`${SEL.size} selected (click · shift/ctrl-click for several)`:'click cards to select · shift/ctrl-click for several';$('multi').textContent=SEL.size>1?`· ${SEL.size} selected`:''}
+function thumb(el,src){const s=Math.min(el.width/src.width,el.height/src.height),c=el.getContext('2d');c.clearRect(0,0,el.width,el.height);c.drawImage(src,(el.width-src.width*s)/2,(el.height-src.height*s)/2,src.width*s,src.height*s)}
+function renderGallery(){const G=$('gal');G.innerHTML='';A.forEach((a,i)=>{const c=document.createElement('div');c.className='card'+(SEL.has(a.id)?' sel':'');
+ c.innerHTML=`<canvas width=300 height=300></canvas><div class="t"><input type="checkbox" ${a.include?'checked':''} title="keep in room"><span class="sw" style="background:${a.color}"></span><input type="text" value="${a.label}"></div><div style="margin-top:4px"><span class="badge ${a.status==='err'?'err':a.status==='refining'?'busy':a.refined?'ok':''}">${a.status==='refining'?'refining…':a.status==='err'?'refine failed':a.refined?'refined':'cutout'}</span> <span class="badge ${a.mesh==='done'?'ok':a.mesh==='err'?'err':a.mesh?'busy':''}">${a.mesh==='done'?'mesh ✓':a.mesh||'no mesh'}</span></div>`;
+ thumb(c.querySelector('canvas'),a.view);
+ c.onclick=e=>{if(e.target.tagName==='INPUT')return;if(e.shiftKey&&lastClick!=null&&!e.ctrlKey){const[lo,hi]=[Math.min(lastClick,i),Math.max(lastClick,i)];for(let k=lo;k<=hi;k++)SEL.add(A[k].id);sel=i;renderAll()}else{lastClick=i;pick(a.id,e.ctrlKey||e.metaKey)}};
+ c.querySelector('input[type=checkbox]').onchange=e=>{pushUndo();a.include=e.target.checked;updBtns();draw2();update3();renderLayers()};
+ c.querySelector('input[type=text]').oninput=e=>{a.label=e.target.value;draw2()};G.appendChild(c)})}
+
+/* ---------------- inspector ---------------- */
+function inspector(){const a=cur();const has=!!a;$('insp').style.display=has?'block':'none';$('none').style.display=has?'none':'block';const p=$('prev');
+ if(!has){p.removeAttribute('src');return}const c=document.createElement('canvas');c.width=c.height=300;thumb(c,a.view);p.src=c.toDataURL();
+ $('iname').value=a.label;$('ictx').value=a.context;$('irefn').textContent=a.refName||'';$('iw').value=Math.round(a.w);$('id').value=Math.round(a.d);$('ih').value=Math.round(a.h);$('ir').value=Math.round(a.rot);$('ix').value=Math.round(a.x);$('iy').value=Math.round(a.y);
+ $('fp').textContent=`· covers ${(a.w*a.d/1e4).toFixed(2)} m²`}
+$('iname').oninput=e=>{const a=cur();if(a){a.label=e.target.value;draw2();renderGallery();renderLayers()}};$('ictx').oninput=e=>{for(const a of selected())a.context=e.target.value};
+$('iref').onchange=e=>{const f=e.target.files[0];if(f)for(const a of selected()){a.refBlob=f;a.refName=f.name}$('irefn').textContent=f?f.name:''};$('iclr').onclick=()=>{for(const a of selected()){a.refBlob=null;a.refName=''}$('irefn').textContent=''};
+let numUndo=false;
+for(const [id,k] of [['iw','w'],['id','d'],['ih','h'],['ir','rot'],['ix','x'],['iy','y']]){$(id).onfocus=()=>numUndo=false;$(id).oninput=e=>{const a=cur();if(!a)return;if(!numUndo){pushUndo();numUndo=true}a[k]=+e.target.value;$('fp').textContent=`· covers ${(a.w*a.d/1e4).toFixed(2)} m²`;draw2();sync3(a);renderLayers()}}
+function renderAll(){renderGallery();inspector();updBtns();draw2();renderLayers();update3();updUndo()}
+
+/* ---------------- top-down layout ---------------- */
+const c2=$('c2'),cx=c2.getContext('2d');
+function fit(){const dp=devicePixelRatio;c2.width=c2.clientWidth*dp;c2.height=c2.clientHeight*dp;if(R){const m=$('c3');R.setSize(m.clientWidth,m.clientHeight);cam.aspect=m.clientWidth/Math.max(1,m.clientHeight);cam.updateProjectionMatrix()}draw2()}
+const S=()=>Math.min((c2.width-70)/ROOM.w,(c2.height-70)/ROOM.d),O=()=>[(c2.width-ROOM.w*S())/2,(c2.height-ROOM.d*S())/2+8];
+let marq=null;
+function draw2(){if(view!=='2')return;cx.fillStyle='#14161a';cx.fillRect(0,0,c2.width,c2.height);const s=S(),[ox,oy]=O(),dp=devicePixelRatio;
+ cx.fillStyle='#1b1e24';cx.fillRect(ox,oy,ROOM.w*s,ROOM.d*s);cx.strokeStyle='#262b33';cx.lineWidth=1;
+ for(let m=0;m<=ROOM.w;m+=50){cx.beginPath();cx.moveTo(ox+m*s,oy);cx.lineTo(ox+m*s,oy+ROOM.d*s);cx.stroke()}for(let m=0;m<=ROOM.d;m+=50){cx.beginPath();cx.moveTo(ox,oy+m*s);cx.lineTo(ox+ROOM.w*s,oy+m*s);cx.stroke()}
+ cx.strokeStyle='#4a5160';cx.lineWidth=3;cx.strokeRect(ox,oy,ROOM.w*s,ROOM.d*s);cx.fillStyle='#8b93a1';cx.font=`${12*dp}px system-ui`;cx.textAlign='left';cx.fillText(`${ROOM.w} cm`,ox+ROOM.w*s/2-20*dp,oy-6*dp);cx.save();cx.translate(ox-8*dp,oy+ROOM.d*s/2+20*dp);cx.rotate(-Math.PI/2);cx.fillText(`${ROOM.d} cm`,0,0);cx.restore();
+ for(const i of drawOrder()){const a=A[i],on=SEL.has(a.id),w=a.w*s,h=a.d*s;cx.save();cx.translate(ox+a.x*s,oy+a.y*s);cx.rotate(a.rot*Math.PI/180);
+  cx.fillStyle=a.color.replace('hsl(','hsla(').replace(')',',0.45)');cx.fillRect(-w/2,-h/2,w,h);cx.strokeStyle=a.color;cx.lineWidth=(on?3:1.5)*dp;cx.strokeRect(-w/2,-h/2,w,h);
+  cx.fillStyle='#fff';cx.font=`${Math.max(10,Math.min(14,w/8/dp))*dp}px system-ui`;cx.textAlign='center';cx.fillText(a.label,0,-2*dp);cx.fillStyle='#cfd4dc';cx.font=`${10*dp}px system-ui`;cx.fillText(`${Math.round(a.w)}×${Math.round(a.d)}`,0,11*dp);
+  if(on&&SEL.size===1){cx.fillStyle='#fff';cx.fillRect(w/2-6*dp,h/2-6*dp,12*dp,12*dp);cx.beginPath();cx.arc(-w/2,-h/2,7*dp,0,7);cx.fillStyle='#ffd43b';cx.fill();cx.fillStyle='#000';cx.font=`${10*dp}px system-ui`;cx.fillText('⟳',-w/2,-h/2+3.5*dp)}cx.restore()}
+ if(marq){cx.strokeStyle='#74c0fc';cx.fillStyle='rgba(116,192,252,.12)';cx.lineWidth=1*dp;cx.fillRect(marq.x0,marq.y0,marq.x1-marq.x0,marq.y1-marq.y0);cx.strokeRect(marq.x0,marq.y0,marq.x1-marq.x0,marq.y1-marq.y0)}
+ const a=cur();if(a){const pw=230*dp,ph=96*dp,px=c2.width-pw-10*dp,py=10*dp;cx.fillStyle='rgba(29,32,38,.94)';cx.fillRect(px,py,pw,ph);cx.strokeStyle=a.color;cx.lineWidth=2;cx.strokeRect(px,py,pw,ph);const t=document.createElement('canvas');t.width=t.height=80;thumb(t,a.view);cx.drawImage(t,px+8*dp,py+8*dp,80*dp,80*dp);
+  cx.fillStyle='#fff';cx.textAlign='left';cx.font=`bold ${13*dp}px system-ui`;cx.fillText(a.label.slice(0,16),px+96*dp,py+24*dp);cx.fillStyle='#cfd4dc';cx.font=`${11*dp}px system-ui`;cx.fillText(`W ${Math.round(a.w)}  D ${Math.round(a.d)}  H ${Math.round(a.h)} cm`,px+96*dp,py+44*dp);cx.fillText(`covers ${(a.w*a.d/1e4).toFixed(2)} m²`,px+96*dp,py+62*dp);cx.fillText(`${(100*a.w*a.d/(ROOM.w*ROOM.d)).toFixed(1)}% of room`,px+96*dp,py+80*dp)}}
+function pick2(mx,my){const s=S(),[ox,oy]=O();const ord=drawOrder().reverse();for(const i of ord){const a=A[i];const dx=mx-(ox+a.x*s),dy=my-(oy+a.y*s),r=-a.rot*Math.PI/180,lx=dx*Math.cos(r)-dy*Math.sin(r),ly=dx*Math.sin(r)+dy*Math.cos(r);if(Math.abs(lx)<a.w*s/2&&Math.abs(ly)<a.d*s/2)return a}return null}
+let drag=null;const P=e=>{const r=c2.getBoundingClientRect();return[(e.clientX-r.left)*devicePixelRatio,(e.clientY-r.top)*devicePixelRatio]};
+c2.onpointerdown=e=>{const[x,y]=P(e),s=S(),[ox,oy]=O(),dp=devicePixelRatio;const a=cur();
+ if(a&&a.include&&SEL.size===1){const dx=x-(ox+a.x*s),dy=y-(oy+a.y*s),r=-a.rot*Math.PI/180,lx=dx*Math.cos(r)-dy*Math.sin(r),ly=dx*Math.sin(r)+dy*Math.cos(r);
+  if(Math.abs(lx-a.w*s/2)<12*dp&&Math.abs(ly-a.d*s/2)<12*dp){pushUndo();drag={mode:'resize',a};c2.setPointerCapture(e.pointerId);return}
+  if(Math.abs(lx+a.w*s/2)<12*dp&&Math.abs(ly+a.d*s/2)<12*dp){pushUndo();drag={mode:'rotate',a,off:Math.atan2(dy,dx)*180/Math.PI-a.rot};c2.setPointerCapture(e.pointerId);return}}
+ const h=pick2(x,y),add=e.shiftKey||e.ctrlKey||e.metaKey;
+ if(h){if(add){if(SEL.has(h.id)){SEL.delete(h.id);sel=SEL.size?A.findIndex(q=>q.id===[...SEL].pop()):null}else{SEL.add(h.id);sel=A.indexOf(h)}}else if(!SEL.has(h.id)){SEL.clear();SEL.add(h.id);sel=A.indexOf(h)}else sel=A.indexOf(h);
+  pushUndo();drag={mode:'move',x,y,start:selected().map(q=>({q,x:q.x,y:q.y}))};c2.setPointerCapture(e.pointerId)}
+ else{if(!add){SEL.clear();sel=null}marq={x0:x,y0:y,x1:x,y1:y,add};drag={mode:'marq'};c2.setPointerCapture(e.pointerId)}
+ renderGallery();inspector();draw2();renderLayers()};
+c2.onpointermove=e=>{if(!drag)return;const[x,y]=P(e),s=S(),[ox,oy]=O();
+ if(drag.mode==='move'){for(const t of drag.start){t.q.x=Math.max(0,Math.min(ROOM.w,t.x+(x-drag.x)/s));t.q.y=Math.max(0,Math.min(ROOM.d,t.y+(y-drag.y)/s));sync3(t.q)}}
+ else if(drag.mode==='resize'){const a=drag.a,dx=x-(ox+a.x*s),dy=y-(oy+a.y*s),r=-a.rot*Math.PI/180,lx=dx*Math.cos(r)-dy*Math.sin(r),ly=dx*Math.sin(r)+dy*Math.cos(r);a.w=Math.max(10,2*Math.abs(lx)/s);a.d=Math.max(10,2*Math.abs(ly)/s);sync3(a)}
+ else if(drag.mode==='rotate'){const a=drag.a,dx=x-(ox+a.x*s),dy=y-(oy+a.y*s);let r=Math.atan2(dy,dx)*180/Math.PI-drag.off;if(e.shiftKey)r=Math.round(r/15)*15;a.rot=Math.round(((r+180)%360+360)%360-180);sync3(a)}
+ else if(drag.mode==='marq'){marq.x1=x;marq.y1=y;const[x0,x1]=[Math.min(marq.x0,x),Math.max(marq.x0,x)],[y0,y1]=[Math.min(marq.y0,y),Math.max(marq.y0,y)];if(!marq.add)SEL.clear();for(const a of A){if(!a.include)continue;const px=ox+a.x*s,py=oy+a.y*s;if(px>=x0&&px<=x1&&py>=y0&&py<=y1)SEL.add(a.id)}sel=SEL.size?A.findIndex(q=>q.id===[...SEL].pop()):null}
+ inspector();draw2()};
+c2.onpointerup=()=>{if(drag&&drag.mode==='marq'){marq=null;renderGallery();renderLayers()}drag=null;draw2();renderLayers()};
+let wheelT=0;c2.onwheel=e=>{e.preventDefault();const t=selected();if(!t.length)return;if(Date.now()-wheelT>600)pushUndo();wheelT=Date.now();for(const a of t){if(e.shiftKey)a.rot+=e.deltaY>0?5:-5;else{const f=e.deltaY>0?.95:1.05;a.w*=f;a.d*=f;a.h*=f}sync3(a)}inspector();draw2()};
+addEventListener('keydown',e=>{const typing=['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&document.activeElement.type!=='checkbox';
+ if((e.ctrlKey||e.metaKey)&&!typing){const k=e.key.toLowerCase();if(k==='z'&&!e.shiftKey){e.preventDefault();undo();return}if(k==='y'||(k==='z'&&e.shiftKey)){e.preventDefault();redo();return}if(k==='a'&&view==='2'){e.preventDefault();A.forEach(a=>a.include&&SEL.add(a.id));renderAll();return}}
+ if((e.key==='Delete'||e.key==='Backspace')&&SEL.size&&!typing){pushUndo();selected().forEach(a=>{a.include=false;sync3(a)});SEL.clear();sel=null;renderAll()}});
+$('mid').onclick=()=>{idMode=!idMode;$('mid').classList.toggle('on',idMode);A.forEach(sync3)};
+
+/* ---------------- save / load layouts ---------------- */
+const layoutJSON=()=>({units:'cm',room_cm:[ROOM.w,ROOM.d],sizes:'estimated from typical sizes per category; edit if known',axes:'x right, y down (top-down), rot deg',input_photo:{file:photoFile?.name||null,source_licence:$('lic').value||'UNRECORDED'},
+ pipeline:{segmentation:'SAM 3.1 (SAM License)',refine:'Qwen-Image-Edit 2511 + Lightning LoRA (open weights)',mesh:'TRELLIS.2 (check weights licence)',runtime:'ComfyUI Cloud',generated:true},
+ assets:A.filter(a=>a.include).map(a=>({id:a.id,label:a.label,context:a.context,colour_id:a.color,refined:a.refined,position_cm:[+a.x.toFixed(1),+a.y.toFixed(1)],size_cm:[+a.w.toFixed(1),+a.d.toFixed(1),+a.h.toFixed(1)],rotation_deg:a.rot,layer:a.z||0,on_top_of:(parentOf(a)||{}).label||null,mesh:a.glbName||null}))});
+function applyLayout(j){pushUndo();if(j.room_cm){ROOM.w=j.room_cm[0];ROOM.d=j.room_cm[1];syncRoom()}(j.assets||[]).forEach(m=>{const a=byId(m.id);if(a){a.include=true;a.x=m.position_cm[0];a.y=m.position_cm[1];if(m.size_cm)[a.w,a.d,a.h]=m.size_cm;a.rot=m.rotation_deg||0;a.z=m.layer||0;a.label=m.label||a.label}});renderAll();update3()}
+const saved=()=>{try{return JSON.parse(localStorage.getItem('rb_layouts')||'{}')}catch{return{}}};
+function refreshSaved(){const s=$('lload');s.innerHTML='<option value="">Load saved…</option>'+Object.keys(saved()).map(k=>`<option>${k}</option>`).join('')}
+$('lsave').onclick=()=>{const n=($('lname').value||'').trim()||('layout '+new Date().toLocaleTimeString());const all=saved();all[n]=layoutJSON();try{localStorage.setItem('rb_layouts',JSON.stringify(all))}catch(e){}refreshSaved();log('layout saved as "'+n+'" (also downloaded)');dl(layoutJSON(),n.replace(/[^\w-]+/g,'_')+'.json')};
+$('lload').onchange=e=>{const j=saved()[e.target.value];if(j)applyLayout(j);e.target.value=''};
+const dl=(o,name)=>{const l=document.createElement('a');l.href=URL.createObjectURL(new Blob([JSON.stringify(o,null,2)],{type:'application/json'}));l.download=name;l.click()};
+$('mex').onclick=()=>dl(layoutJSON(),'layout.json');
+$('fj').onchange=async e=>applyLayout(JSON.parse(await e.target.files[0].text()));refreshSaved();
+
+/* ---------------- 3D ---------------- */
+let R=null,cam,scn,ctl,floor,grid,objs=new Map(),ray=new THREE.Raycaster(),gl=new GLTFLoader();
+function init3(){const m=$('c3');R=new THREE.WebGLRenderer({antialias:true});R.setPixelRatio(devicePixelRatio);R.shadowMap.enabled=true;R.setSize(m.clientWidth,m.clientHeight);m.appendChild(R.domElement);R.domElement.style.cssText='position:absolute;inset:0;width:100%;height:100%';
+ scn=new THREE.Scene();scn.background=new THREE.Color(0x14161a);cam=new THREE.PerspectiveCamera(45,m.clientWidth/Math.max(1,m.clientHeight),.05,100);cam.position.set(4.5,4,6);
+ ctl=new OrbitControls(cam,R.domElement);ctl.mouseButtons={LEFT:THREE.MOUSE.ROTATE,MIDDLE:THREE.MOUSE.PAN,RIGHT:THREE.MOUSE.PAN};ctl.screenSpacePanning=true;ctl.enableDamping=true;ctl.maxPolarAngle=Math.PI/2.02;ctl.target.set(0,.4,0);
+ scn.add(new THREE.HemisphereLight(0xffffff,0x334,1.1));const d=new THREE.DirectionalLight(0xffffff,2.2);d.position.set(3,6,2);d.castShadow=true;d.shadow.mapSize.set(2048,2048);Object.assign(d.shadow.camera,{left:-8,right:8,top:8,bottom:-8});scn.add(d);
+ R.domElement.addEventListener('pointerdown',down3);R.domElement.addEventListener('pointermove',move3);addEventListener('pointerup',()=>{d3=null;ctl.enabled=true});
+ (function loop(){requestAnimationFrame(loop);if(view==='2'){ctl.update();R.render(scn,cam)}})();update3()}
+function update3(){if(!R)return;if(floor){scn.remove(floor);scn.remove(grid)}const W=ROOM.w/100,D=ROOM.d/100;floor=new THREE.Mesh(new THREE.PlaneGeometry(W,D),new THREE.MeshStandardMaterial({color:0x2a2e36,roughness:.9}));floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scn.add(floor);grid=new THREE.GridHelper(Math.max(W,D),Math.round(Math.max(W,D)*2),0x4a5160,0x30353d);scn.add(grid);A.forEach(sync3)}
+const wpos=a=>[(a.x-ROOM.w/2)/100,(a.y-ROOM.d/2)/100];
+function sync3(a){if(!R||!a)return;let o=objs.get(a.id);if(o&&o.userData.glb!==!!a.glb){scn.remove(o);objs.delete(a.id);o=null}
+ if(!o){o=new THREE.Group();o.userData={a,glb:!!a.glb};scn.add(o);objs.set(a.id,o);
+  if(a.glb){gl.parse(a.glb.slice(0),'',g=>{const m=g.scene;m.traverse(c=>{if(c.isMesh){c.castShadow=c.receiveShadow=true;c.userData.orig=c.material}});const b=new THREE.Box3().setFromObject(m),sz=b.getSize(new THREE.Vector3()),ct=b.getCenter(new THREE.Vector3());m.position.set(-ct.x,-b.min.y,-ct.z);const inner=new THREE.Group();inner.add(m);inner.userData.size=sz;o.add(inner);o.userData.inner=inner;sync3(a)},e=>log('GLB parse error '+e.message))}
+  else{const p=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial({color:a.color,transparent:true,opacity:.6}));p.castShadow=true;o.add(p);o.userData.box=p}}
+ o.visible=a.include;const W=a.w/100,D=a.d/100,H=a.h/100;
+ if(o.userData.box){o.userData.box.scale.set(W,H,D);o.userData.box.position.y=H/2}
+ else if(o.userData.inner){const sz=o.userData.inner.userData.size,k=Math.min(W/(sz.x||1),D/(sz.z||1));o.userData.inner.scale.setScalar(k)}
+ const[x,z]=wpos(a);o.position.set(x,elev(a)/100,z);o.rotation.y=-a.rot*Math.PI/180;
+ o.traverse(c=>{if(c.isMesh){if(a.glb)c.material=idMode?(c.userData.idm||(c.userData.idm=new THREE.MeshBasicMaterial({color:a.color}))):(c.userData.orig||c.material);else c.material.color.set(a.color)}})}
+let d3=null;const pl=new THREE.Plane(new THREE.Vector3(0,1,0),0);
+function setRay(e){const r=R.domElement.getBoundingClientRect();ray.setFromCamera(new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1),cam)}
+function down3(e){if(e.button!==0)return;setRay(e);const hit=ray.intersectObjects([...objs.values()].filter(o=>o.visible),true)[0];if(!hit)return;let o=hit.object;while(o&&!o.userData.a)o=o.parent;if(!o)return;const a=o.userData.a;
+ if(e.shiftKey||e.ctrlKey){pick(a.id,true);return}if(!SEL.has(a.id)){SEL.clear();SEL.add(a.id)}sel=A.indexOf(a);pushUndo();ctl.enabled=false;const p=new THREE.Vector3();ray.ray.intersectPlane(pl,p);d3={o,dx:o.position.x-p.x,dz:o.position.z-p.z};renderGallery();inspector();renderLayers();draw2()}
+function move3(e){if(!d3)return;setRay(e);const p=new THREE.Vector3();if(!ray.ray.intersectPlane(pl,p))return;const a=d3.o.userData.a;a.x=Math.max(0,Math.min(ROOM.w,(p.x+d3.dx)*100+ROOM.w/2));a.y=Math.max(0,Math.min(ROOM.d,(p.z+d3.dz)*100+ROOM.d/2));sync3(a);inspector();draw2()}
+const HINT={1:'Detected objects: click to select, shift-click (range) or ctrl-click (toggle) for several. Untick "keep" to drop an object. Refine until each 2D image is one clean, complete object, then confirm.',2:'Top-down (left): drag blocks · shift-click / drag-select several · white corner = resize · yellow corner = rotate (shift = 15° steps) · wheel = scale, shift+wheel = rotate · Ctrl+Z / Ctrl+Y undo/redo.   3D (right): drag objects on the floor · drag empty space = rotate · right/middle-drag = pan · wheel = zoom.'};
+function show(v){if(v==='2'&&!confirmed)return;view=v;$('gal').style.display=v==='1'?'grid':'none';$('galbar').style.display=v==='1'?'flex':'none';$('lay').style.display=v==='2'?'flex':'none';$('t1').classList.toggle('on',v==='1');$('t2').classList.toggle('on',v==='2');$('hint').textContent=HINT[v];
+ if(v==='2'){if(!R)init3();else update3()}requestAnimationFrame(()=>{fit();renderAll()})}
+$('t1').onclick=()=>show('1');$('t2').onclick=()=>show('2');
+addEventListener('resize',fit);syncRoom();show('1');updUndo();
+</script></body></html>

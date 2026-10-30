@@ -1,0 +1,10 @@
+{"1":{"inputs":{"image":"INPUT_ROOM.png"},"class_type":"LoadImage"},
+"2":{"inputs":{"ckpt_name":"sam3.1_multiplex_fp16.safetensors"},"class_type":"CheckpointLoaderSimple"},
+"3":{"inputs":{"text":"PROMPT","clip":["2",1]},"class_type":"CLIPTextEncode"},
+"4":{"inputs":{"threshold":0.5,"refine_iterations":2,"individual_masks":true,"model":["2",0],"image":["1",0],"conditioning":["3",0]},"class_type":"SAM3_Detect"},
+"5":{"inputs":{"output_width":1024,"output_height":1024,"padding":32,"keep_aspect":"pad","image":["1",0],"bboxes":["4",1]},"class_type":"CropByBBoxes"},
+"6":{"inputs":{"filename_prefix":"room/crop","images":["5",0]},"class_type":"SaveImage"},
+"7":{"inputs":{"bg_removal_name":"birefnet.safetensors"},"class_type":"LoadBackgroundRemovalModel"},
+"8":{"inputs":{"bg_removal_model":["7",0],"image":["5",0]},"class_type":"RemoveBackground"},
+"9":{"inputs":{"mask":["8",0]},"class_type":"MaskToImage"},
+"10":{"inputs":{"filename_prefix":"room/cut","images":["9",0]},"class_type":"SaveImage"}}
