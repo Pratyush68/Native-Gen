@@ -153,13 +153,17 @@ $('detect').onclick=async()=>{$('detect').disabled=true;try{
 const SKIPL=/^(wall|walls|floor|ceiling|room|window curtain)s?$/i;
 async function suggestAssets(){const b=$('suggest');b.disabled=true;try{
  log('uploading photo…');if(!photoName)photoName=await upload(photoFile,'room_'+Date.now()+'.png');
- log('asking the vision model (Qwen2.5-VL) what is in the room…');
- const g={"1":{inputs:{image:photoName},class_type:'LoadImage'},"c":{inputs:{clip_name:'qwen_2.5_vl_7b_fp8_scaled.safetensors',type:'qwen_image',device:'default'},class_type:'CLIPLoader'},
-  "t":{inputs:{clip:["c",0],prompt:'List every separate piece of furniture, appliance, decor item and object visible in this room photo, as a comma-separated list of short singular nouns (e.g. "bed, desk, office chair, bookshelf"). Do not include walls, floor or ceiling. Output only the list.',max_length:160,sampling_mode:'off',image:["1",0]},class_type:'TextGenerate'},
-  "b":{inputs:{source:["t",0]},class_type:'PreviewAny'}};
- const id=await submit(g);await wait(id,'suggest');const o=await outputs(id);let txt='';(function w(x){if(typeof x==='string'){if(!txt&&x.trim())txt=x}else if(Array.isArray(x))x.forEach(w);else if(x&&typeof x==='object')Object.values(x).forEach(w)})(o.b||o);
- const seen=new Set(),L=[];for(let t of txt.replace(/\n|;|•|\*|\d+\./g,',').split(',')){t=t.trim().toLowerCase().replace(/^(a|an|the)\s+/,'').replace(/[.]+$/,'');if(!t||t.length>30||SKIPL.test(t)||seen.has(t))continue;seen.add(t);L.push(t)}
- if(!L.length)throw new Error('model returned no list');$('prompt').value=L.slice(0,25).join(', ');log(`found ${L.length} object type(s): edit the list if you like, then press Crop assets.`);
+ const Q='List every separate piece of furniture, appliance, decor item and object visible in this room photo, as a comma-separated list of short singular nouns (e.g. "bed, desk, office chair, bookshelf"). Do not include walls, floor or ceiling. Output only the list.';
+ const tries=[['qwen3.5_4b_bf16.safetensors','stable_diffusion'],['qwen3.5_9b_bf16.safetensors','stable_diffusion'],['qwen_2.5_vl_7b_fp8_scaled.safetensors','qwen_image']];
+ let txt='',lastErr='';
+ for(const [clip_name,type] of tries){try{log('asking the vision model ('+clip_name.split('_bf16')[0].split('_fp8')[0]+') what is in the room…');
+  const g={"1":{inputs:{image:photoName},class_type:'LoadImage'},"c":{inputs:{clip_name,type,device:'default'},class_type:'CLIPLoader'},
+   "t":{inputs:{clip:["c",0],prompt:Q,image:["1",0],max_length:300,sampling_mode:'off',thinking:false,use_default_template:true},class_type:'TextGenerate'},
+   "b":{inputs:{source:["t",0]},class_type:'PreviewAny'}};
+  const id=await submit(g);await wait(id,'suggest');const o=await outputs(id);txt='';(function w(x){if(typeof x==='string'){if(!txt&&x.trim())txt=x}else if(Array.isArray(x))x.forEach(w);else if(x&&typeof x==='object')Object.values(x).forEach(w)})(o.b||o);
+  if(txt)break;lastErr='empty output'}catch(e){lastErr=String(e&&e.message||e).slice(0,160);log('  '+clip_name+' failed: '+lastErr)}}
+ const seen=new Set(),L=[];for(let t of txt.replace(/<think>[\s\S]*?<\/think>/g,'').replace(/\n|;|•|\*|\d+\./g,',').split(',')){t=t.trim().toLowerCase().replace(/^(a|an|the)\s+/,'').replace(/[.]+$/,'');if(!t||t.length>30||SKIPL.test(t)||seen.has(t))continue;seen.add(t);L.push(t)}
+ if(!L.length)throw new Error(lastErr||'model returned no list');$('prompt').value=L.slice(0,25).join(', ');log(`found ${L.length} object type(s): edit the list if you like, then press Crop assets.`);
 }catch(e){log('Detect assets failed: '+String(e&&e.message||e).slice(0,200)+'\nFalling back to a common-furniture list; edit it, then Crop assets.');$('prompt').value='bed, desk, chair, bookshelf, rug, television, backpack, door, wardrobe, lamp, plant, dresser'}finally{b.disabled=!photoFile}}
 $('suggest').onclick=suggestAssets;
 
