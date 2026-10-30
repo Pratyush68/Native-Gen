@@ -26,6 +26,7 @@ main{flex:1;position:relative;min-width:0;display:flex;flex-direction:column}
 .badge{font-size:10px;padding:1px 5px;border-radius:8px;background:#2a2f38;color:var(--mut)}.badge.ok{background:#1f4d2e;color:#8ce99a}.badge.err{background:#5c1f1f;color:#ffa8a8}.badge.busy{background:#5c4a1f;color:#ffe08a}
 #lay{flex:1;display:none;flex-direction:column;min-height:0}
 #bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:0 10px 8px}#bar select,#bar input{width:auto}#bar input[type=number]{width:64px}#bar input[type=text]{width:120px}
+#lay.v3 #bar,#lay.v3 #c2w{display:none}#lay.v3 #bar3{display:flex!important}.ver{width:54px;height:54px;border:2px solid var(--line);border-radius:6px;background:#0e1013;cursor:pointer;position:relative}.ver.on{border-color:var(--acc)}.ver i{position:absolute;right:1px;bottom:1px;font:9px system-ui;background:#1f4d2e;color:#8ce99a;padding:0 3px;border-radius:4px;font-style:normal}
 #split{flex:1;display:flex;min-height:0;gap:2px}#c2w,#c3w{position:relative;flex:1;min-width:0}#c2,#c3{position:absolute;inset:0;width:100%;height:100%}
 #hint{padding:4px 12px;color:var(--mut);font-size:12px;flex:none}
 #prev{width:100%;aspect-ratio:1;object-fit:contain;background:#0e1013;border-radius:8px}
@@ -46,10 +47,11 @@ main{flex:1;position:relative;min-width:0;display:flex;flex-direction:column}
 <div id="log"></div>
 </aside>
 <main>
-<div id="tabs"><button id="t1" class="on">1 · Detected objects</button><button id="t2" disabled title="confirm assets first">2 · Layout: top-down + 3D</button></div>
+<div id="tabs"><button id="t1" class="on">1 · Detected objects</button><button id="t2" disabled title="confirm assets first">2 · Layout: top-down + 3D</button><button id="t3" disabled title="available once meshes are generated">3 · Final look</button></div>
 <div id="t1w"><div id="detmap"><canvas id="dm"></canvas><div id="dmbar"><button id="dadd">+ Add box</button><button id="ddel" title="delete selected (Del)">Delete selected</button><button id="drest" disabled>Restore deleted</button><span class="st" id="dmhint">what the model detected: drag a box to move it · white corner resizes · double-click to rename</span></div></div><div id="gal"></div></div>
 <div id="galbar"><button id="confirm" class="go" disabled>Confirm assets → Next: Layout (arrange the objects in the room, top-down + 3D)</button><span class="st" id="galinfo"></span></div>
 <div id="lay">
+<div id="bar3" style="display:none;gap:6px;align-items:center;padding:0 10px 8px;flex-wrap:wrap"><button id="g3gen" class="go">Generate missing meshes</button><button id="g3id">Colour ID</button><button id="g3exp">Export .json</button><span class="st">click an object, then change its prompt / reference on the right and regenerate</span></div>
 <div id="bar">
 <button id="bundo">↶ Undo</button><button id="bredo">↷ Redo</button>
 <select id="rpre" title="room size"><option value="">Room size…</option><option>300x300</option><option>400x300</option><option>400x400</option><option>500x400</option><option>500x500</option><option>600x500</option><option>800x600</option></select>
@@ -68,7 +70,7 @@ main{flex:1;position:relative;min-width:0;display:flex;flex-direction:column}
 <input id="iname" type="text" style="margin-top:8px"><div class="st" id="nameNote" style="margin-top:3px">The name is also used as context: &quot;TV table&quot; means the table itself, not what is on it.</div>
 <div class="st" style="margin-top:6px">Context for refinement (what it is, material, colour…)</div><textarea id="ictx" placeholder="e.g. single bed with blue patterned quilt and wooden frame"></textarea>
 <div class="r"><label class="b">Reference image<input id="iref" type="file" accept="image/*" hidden></label><button id="iclr">Clear ref</button><span id="irefn" class="st"></span></div>
-<div class="r"><button id="iref1" class="p">Refine this</button><button id="iregen" class="go">Refine + regenerate mesh</button><button id="irev">Original cutout</button><button id="idel">Delete asset</button></div>
+<div class="r"><button id="iref1" class="p">Refine this</button><button id="iregen" class="go">Refine + regenerate mesh</button><button id="irev">Original cutout</button><button id="idel">Delete asset</button></div><div class="st" style="margin-top:8px">Versions (last 5 for this asset, click to restore)</div><div class="r" id="vers" style="margin-top:4px"></div><div class="r" style="display:none"></div>
 <div id="bbsec"><div class="st" style="margin-top:10px">Detection box (px on the photo)</div><div class="g3" style="grid-template-columns:repeat(4,1fr)"><div><label>X</label><input id="bx" type="number"></div><div><label>Y</label><input id="by" type="number"></div><div><label>W</label><input id="bw" type="number"></div><div><label>H</label><input id="bh" type="number"></div></div></div>
 <div class="st" style="margin-top:10px">Size (cm) <span id="fp"></span></div>
 <div class="g3"><div><label>Width</label><input id="iw" type="number" min="5"></div><div><label>Depth</label><input id="id" type="number" min="5"></div><div><label>Height</label><input id="ih" type="number" min="5"></div></div>
@@ -179,7 +181,7 @@ async function refine(a){a.status='refining';renderAll();try{
  const name=await upload(a.origBlob,`${a.id}_in_${Date.now()}.png`);let ref=null;if(a.refBlob)ref=await upload(a.refBlob,`${a.id}_ref_${Date.now()}.png`);
  const prompt=`Redraw this ${a.label} as one complete, clean, isolated object centred on a plain neutral grey background, whole object visible from a three-quarter front view. Show only the ${a.label} itself, not objects placed on top of it or inside it. Remove any other objects, fragments or background. Keep the same colours, materials and illustration style.`+(ref?' Use the second image as a design reference for this object.':'')+(a.context?' '+a.context:'');
  const id=await submit(qwenGraph(name,ref,prompt,Math.floor(Math.random()*1e9)));await wait(id,a.label);const o=await outputs(id);const f=files(o.sv||o)[0];if(!f)throw new Error('no image returned');
- a.blob=await getFile(f);a.view=await loadImg(a.blob);a.refined=true;a.status='refined';a.glb=null;a.mesh='';log(`${a.label}: refined`)}catch(e){a.status='err';log('ERROR refine '+a.label+': '+e.message.slice(0,200))}renderAll()}
+ a.blob=await getFile(f);a.view=await loadImg(a.blob);a.refined=true;a.status='refined';a.glb=null;a.gv=(a.gv||0)+1;a.mesh='';snapVer(a);log(`${a.label}: refined`)}catch(e){a.status='err';log('ERROR refine '+a.label+': '+String(e&&e.message||e).slice(0,200))}renderAll()}
 $('refSel').onclick=async()=>{const t=selected();if(!t.length)return;$('refSel').disabled=$('refAll').disabled=true;await Promise.all(t.map(refine));updBtns()};
 $('refAll').onclick=async()=>{$('refSel').disabled=$('refAll').disabled=true;await Promise.all(A.filter(a=>a.include).map(refine));updBtns()};
 $('iref1').onclick=async()=>{const t=selected();if(!t.length)return;$('iref1').disabled=true;await Promise.all(t.map(refine));$('iref1').disabled=false};
@@ -187,14 +189,24 @@ $('idel').onclick=deleteSel;$('irev').onclick=()=>{for(const a of selected()){a.
 $('iregen').onclick=async()=>{const t=selected();if(!t.length)return;$('iregen').disabled=true;await Promise.all(t.map(async a=>{await refine(a);if(a.status!=='err')await meshFor(a)}));$('iregen').disabled=false};
 $('confirm').onclick=()=>{if(!A.some(a=>a.include))return;confirmed=true;$('t2').disabled=false;log('assets confirmed → layout');show('2')};
 
+
+/* ---------------- versions (last 5 per asset) ---------------- */
+function snapVer(a){a.vers=a.vers||[];let v=a.vers.find(x=>x.blob===a.blob);if(!v){v={blob:a.blob,ctx:a.context,t:Date.now()};a.vers.push(v);if(a.vers.length>5)a.vers.shift()}v.glb=a.glb||null;v.glbName=a.glbName||null;v.ctx=a.context;a.curVer=v;renderVers()}
+async function restoreVer(a,v){a.blob=v.blob;a.view=await loadImg(v.blob);a.context=v.ctx||'';a.glb=v.glb;a.glbName=v.glbName;a.gv=(a.gv||0)+1;a.mesh=v.glb?'done':'';a.refined=a.blob!==a.origBlob;a.curVer=v;log(a.label+': restored version');renderAll()}
+function renderVers(){const box=$('vers');if(!box)return;box.innerHTML='';const a=cur();if(!a||!a.vers||!a.vers.length){box.innerHTML='<span class="st">none yet (made when you refine or generate a mesh)</span>';return}
+ a.vers.forEach((v,i)=>{const c=document.createElement('canvas');c.width=c.height=54;c.className='ver'+(a.curVer===v?' on':'');c.title=`v${i+1} ${new Date(v.t).toLocaleTimeString()}${v.ctx?' · '+v.ctx:''}`;const im=new Image();im.onload=()=>{const x=c.getContext('2d'),sc=Math.min(54/im.width,54/im.height);x.drawImage(im,(54-im.width*sc)/2,(54-im.height*sc)/2,im.width*sc,im.height*sc)};im.src=URL.createObjectURL(v.blob);c.onclick=()=>restoreVer(a,v);
+  const w=document.createElement('div');w.style.cssText='position:relative;display:inline-block';w.appendChild(c);if(v.glb){const b=document.createElement('i');b.textContent='mesh';b.style.cssText='position:absolute;right:2px;bottom:2px;font:9px system-ui;background:#1f4d2e;color:#8ce99a;padding:0 3px;border-radius:4px';w.appendChild(b)}box.appendChild(w)})}
+
 /* ---------------- 3D meshes ---------------- */
 let MESH_BASE=null;
 async function meshFor(a){try{MESH_BASE=MESH_BASE||await wf('mesh_workflow');a.mesh='uploading';renderAll();const name=await upload(a.blob,`${a.id}_m_${Date.now()}.png`);const g=JSON.parse(JSON.stringify(MESH_BASE));g['122'].inputs.image=name;g['322'].inputs.filename_prefix='room/'+a.id;
   a.mesh='generating';renderAll();log(`${a.label}: TRELLIS.2 running…`);const id=await submit(g);await wait(id,a.label);const o=await outputs(id);
-  const all=files(o);const f=all.find(f=>/\.(glb|gltf)$/i.test(f.filename))||all.find(f=>!/\.(png|jpe?g|webp|gif|txt|json)$/i.test(f.filename));if(!f){log(`${a.label}: no GLB. outputs = `+JSON.stringify(o).slice(0,600));throw new Error('no GLB')}
-  a.glbBlob=await getFile(f);a.glbName=f.filename;a.glb=await a.glbBlob.arrayBuffer();a.mesh='done';log(`${a.label}: mesh ready (${(a.glb.byteLength/1e6).toFixed(1)} MB)`);renderAll();sync3(a)
- }catch(e){a.mesh='err';log('ERROR '+a.label+': '+e.message.slice(0,200));renderAll()}}
-$('gen').onclick=async()=>{const t=A.filter(a=>a.include&&!a.glb);if(!t.length){log('all kept objects already have meshes');return}$('gen').disabled=true;log(`generating ${t.length} mesh(es) for the locked layout…`);
+  const all=files(o);let f=all.find(f=>/\.(glb|gltf)$/i.test(f.filename))||all.find(f=>!/\.(png|jpe?g|webp|gif|txt|json)$/i.test(f.filename));
+  if(!f){const strs=[];(function w(x){if(typeof x==='string'){if(/\.(glb|gltf)(\?|$)/i.test(x))strs.push(x)}else if(Array.isArray(x))x.forEach(w);else if(x&&typeof x==='object')Object.values(x).forEach(w)})(o);if(strs.length){const p=strs[0],i=p.lastIndexOf('/');f={filename:p.slice(i+1),subfolder:i>=0?p.slice(0,i):'',type:'output'}}}
+  if(!f){const keys=Object.entries(o).map(([k,v])=>k+':'+Object.keys(v||{}).join('/')).join('  ');const other=Object.entries(o).filter(([k,v])=>!JSON.stringify(v).includes('"images"')).map(([k,v])=>k+'='+JSON.stringify(v).slice(0,300)).join(' | ');log(`${a.label}: no 3D file. nodes: ${keys}`);log('non-image outputs: '+(other||'none'));throw new Error('no GLB')}
+  a.glbBlob=await getFile(f);a.glbName=f.filename;a.glb=await a.glbBlob.arrayBuffer();a.gv=(a.gv||0)+1;a.mesh='done';snapVer(a);enableT3();log(`${a.label}: mesh ready (${(a.glb.byteLength/1e6).toFixed(1)} MB)`);renderAll();sync3(a)
+ }catch(e){a.mesh='err';log('ERROR '+a.label+': '+String(e&&e.message||e).slice(0,200));renderAll()}}
+$('gen').onclick=async()=>{enableT3();const t=A.filter(a=>a.include&&!a.glb);if(!t.length){log('all kept objects already have meshes');return}$('gen').disabled=true;log(`generating ${t.length} mesh(es) for the locked layout…`);
  for(const a of t)await meshFor(a);$('gen').disabled=false;log('meshes done: this is the 3D final look (drag objects, right-drag to pan, left-drag empty space to rotate)')};
 
 /* ---------------- gallery ---------------- */
@@ -209,7 +221,7 @@ function renderGallery(){const G=$('gal');G.innerHTML='';A.forEach((a,i)=>{const
  c.querySelector('input[type=text]').oninput=e=>{a.label=e.target.value;draw2();drawDM()};G.appendChild(c)})}
 
 /* ---------------- inspector ---------------- */
-function inspector(){const a=cur();const has=!!a;$('insp').style.display=has?'block':'none';$('none').style.display=has?'none':'block';const p=$('prev');
+function inspector(){renderVers();const a=cur();const has=!!a;$('insp').style.display=has?'block':'none';$('none').style.display=has?'none':'block';const p=$('prev');
  p.style.display=has?'':'none';if(!has){p.removeAttribute('src');return}const c=document.createElement('canvas');c.width=c.height=300;thumb(c,a.view);p.src=c.toDataURL();
  $('iname').value=a.label;$('ictx').value=a.context;$('irefn').textContent=a.refName||'';$('iw').value=Math.round(a.w);$('id').value=Math.round(a.d);$('ih').value=Math.round(a.h);$('ir').value=Math.round(a.rot);$('ix').value=Math.round(a.x);$('iy').value=Math.round(a.y);
  $('fp').textContent=`· covers ${(a.w*a.d/1e4).toFixed(2)} m²`;$('bbsec').style.display=a.bb?'block':'none';if(a.bb){$('bx').value=Math.round(a.bb.x);$('by').value=Math.round(a.bb.y);$('bw').value=Math.round(a.bb.w);$('bh').value=Math.round(a.bb.h)}}
@@ -337,7 +349,7 @@ let dragGz=false;
 function commitScale(){if(gmode!=='scale'||!tc||!tc.object)return;const o=tc.object,a=o.userData.a;if(!a)return;const sc=o.scale;a.w=Math.max(5,a.w*sc.x);a.h=Math.max(5,a.h*sc.y);a.d=Math.max(5,a.d*sc.z);if(a.glb)a.fit='axis';o.scale.set(1,1,1);sync3(a);inspector();draw2();renderLayers()}
 function applySnap(){if(!tc)return;const on=$('gSnap').checked;tc.setTranslationSnap(on?+$('gStep').value/100:null);tc.setRotationSnap(on?+$('gRstep').value*Math.PI/180:null);tc.setScaleSnap(on?+$('gSstep').value:null)}
 function setGmode(m){gmode=m;if(!tc)return;tc.setMode(m);tc.showX=m!=='rotate';tc.showZ=m!=='rotate';tc.showY=true;for(const [id,mm] of [['gMove','translate'],['gRot','rotate'],['gScale','scale']])$(id).classList.toggle('on',m===mm)}
-function updGizmo(){if(!tc||dragGz)return;const a=cur();const o=a&&a.include&&SEL.size>=1?objs.get(a.id):null;if(o&&o.visible){if(tc.object!==o)tc.attach(o)}else tc.detach()}
+function updGizmo(){if(!tc||dragGz)return;const a=cur();const o=view==='2'&&a&&a.include&&SEL.size>=1?objs.get(a.id):null;if(o&&o.visible){if(tc.object!==o)tc.attach(o)}else tc.detach()}
 $('gMove').onclick=()=>setGmode('translate');$('gRot').onclick=()=>setGmode('rotate');$('gScale').onclick=()=>setGmode('scale');
 for(const id of ['gSnap','gStep','gRstep','gSstep'])$(id).onchange=applySnap;
 addEventListener('keydown',e=>{if(view!=='2'||e.ctrlKey||e.metaKey||e.altKey)return;if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&document.activeElement.type!=='checkbox')return;const k=e.key.toLowerCase();if(k==='g')setGmode('translate');else if(k==='r')setGmode('rotate');else if(k==='s')setGmode('scale')});
@@ -349,11 +361,11 @@ function init3(){const m=$('c3');R=new THREE.WebGLRenderer({antialias:true});R.s
  ctl=new OrbitControls(cam,R.domElement);ctl.mouseButtons={LEFT:THREE.MOUSE.ROTATE,MIDDLE:THREE.MOUSE.PAN,RIGHT:THREE.MOUSE.PAN};ctl.screenSpacePanning=true;ctl.enableDamping=true;ctl.maxPolarAngle=Math.PI/2.02;ctl.target.set(0,.4,0);
  initGizmo();scn.add(new THREE.HemisphereLight(0xffffff,0x334,1.1));const d=new THREE.DirectionalLight(0xffffff,2.2);d.position.set(3,6,2);d.castShadow=true;d.shadow.mapSize.set(2048,2048);Object.assign(d.shadow.camera,{left:-8,right:8,top:8,bottom:-8});scn.add(d);
  R.domElement.addEventListener('pointerdown',down3);R.domElement.addEventListener('pointermove',move3);addEventListener('pointerup',()=>{d3=null;ctl.enabled=true});
- (function loop(){requestAnimationFrame(loop);if(view==='2'){ctl.update();R.render(scn,cam)}})();update3()}
+ (function loop(){requestAnimationFrame(loop);if(view==='2'||view==='3'){ctl.update();R.render(scn,cam)}})();update3()}
 function update3(){if(!R)return;if(floor){scn.remove(floor);scn.remove(grid)}const W=ROOM.w/100,D=ROOM.d/100;floor=new THREE.Mesh(new THREE.PlaneGeometry(W,D),new THREE.MeshStandardMaterial({color:0x2a2e36,roughness:.9}));floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scn.add(floor);grid=new THREE.GridHelper(Math.max(W,D),Math.round(Math.max(W,D)*2),0x4a5160,0x30353d);scn.add(grid);for(const [id,o] of [...objs]){if(!byId(id)){if(tc&&tc.object===o)tc.detach();scn.remove(o);objs.delete(id)}}A.forEach(sync3);updGizmo()}
 const wpos=a=>[(a.x-ROOM.w/2)/100,(a.y-ROOM.d/2)/100];
-function sync3(a){if(!R||!a)return;let o=objs.get(a.id);if(o&&o.userData.glb!==!!a.glb){scn.remove(o);objs.delete(a.id);o=null}
- if(!o){o=new THREE.Group();o.userData={a,glb:!!a.glb};scn.add(o);objs.set(a.id,o);
+function sync3(a){if(!R||!a)return;let o=objs.get(a.id);if(o&&(o.userData.glb!==!!a.glb||o.userData.gv!==(a.gv||0))){scn.remove(o);objs.delete(a.id);o=null}
+ if(!o){o=new THREE.Group();o.userData={a,glb:!!a.glb,gv:a.gv||0};scn.add(o);objs.set(a.id,o);
   if(a.glb){gl.parse(a.glb.slice(0),'',g=>{const m=g.scene;m.traverse(c=>{if(c.isMesh){c.castShadow=c.receiveShadow=true;c.userData.orig=c.material}});const b=new THREE.Box3().setFromObject(m),sz=b.getSize(new THREE.Vector3()),ct=b.getCenter(new THREE.Vector3());m.position.set(-ct.x,-b.min.y,-ct.z);const inner=new THREE.Group();inner.add(m);inner.userData.size=sz;o.add(inner);o.userData.inner=inner;sync3(a)},e=>log('GLB parse error '+e.message))}
   else{const p=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial({color:a.color,transparent:true,opacity:.6}));p.castShadow=true;o.add(p);o.userData.box=p}}
  o.visible=a.include;const W=a.w/100,D=a.d/100,H=a.h/100;
@@ -364,11 +376,13 @@ function sync3(a){if(!R||!a)return;let o=objs.get(a.id);if(o&&o.userData.glb!==!
 let d3=null;const pl=new THREE.Plane(new THREE.Vector3(0,1,0),0);
 function setRay(e){const r=R.domElement.getBoundingClientRect();ray.setFromCamera(new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1),cam)}
 function down3(e){if(e.button!==0)return;if(tc&&(tc.axis||tc.dragging))return;setRay(e);const hit=ray.intersectObjects([...objs.values()].filter(o=>o.visible),true)[0];if(!hit)return;let o=hit.object;while(o&&!o.userData.a)o=o.parent;if(!o)return;const a=o.userData.a;
- if(e.shiftKey||e.ctrlKey){pick(a.id,true);return}if(!SEL.has(a.id)){SEL.clear();SEL.add(a.id)}sel=A.indexOf(a);pushUndo();ctl.enabled=false;const p=new THREE.Vector3();ray.ray.intersectPlane(pl,p);d3={o,dx:o.position.x-p.x,dz:o.position.z-p.z};renderGallery();inspector();renderLayers();draw2()}
+ if(e.shiftKey||e.ctrlKey){pick(a.id,true);return}if(!SEL.has(a.id)){SEL.clear();SEL.add(a.id)}sel=A.indexOf(a);if(view==='3'){renderGallery();inspector();renderLayers();return}pushUndo();ctl.enabled=false;const p=new THREE.Vector3();ray.ray.intersectPlane(pl,p);d3={o,dx:o.position.x-p.x,dz:o.position.z-p.z};renderGallery();inspector();renderLayers();draw2()}
 function move3(e){if(!d3)return;setRay(e);const p=new THREE.Vector3();if(!ray.ray.intersectPlane(pl,p))return;const a=d3.o.userData.a;a.x=Math.max(0,Math.min(ROOM.w,(p.x+d3.dx)*100+ROOM.w/2));a.y=Math.max(0,Math.min(ROOM.d,(p.z+d3.dz)*100+ROOM.d/2));sync3(a);inspector();draw2()}
-const HINT={1:'Detected objects: click to select, shift-click (range) or ctrl-click (toggle) for several. Untick "keep" to drop an object. Refine until each 2D image is one clean, complete object, then confirm.',2:'Top-down (left): drag blocks · shift-click / drag-select · white corner = resize · yellow corner = rotate (shift = 15° steps) · Ctrl+Z / Ctrl+Y.   3D (right): click an object, then use the gizmo: G move (X/Y/Z arrows), R rotate, S scale · snap + step sizes in the toolbar · drag empty space = orbit · right-drag = pan · wheel = zoom.'};
-function show(v){if(v==='2'&&!confirmed)return;view=v;$('t1w').style.display=v==='1'?'flex':'none';$('gal').style.display=v==='1'?'grid':'none';$('galbar').style.display=v==='1'?'flex':'none';$('lay').style.display=v==='2'?'flex':'none';$('t1').classList.toggle('on',v==='1');$('t2').classList.toggle('on',v==='2');$('hint').textContent=HINT[v];
- if(v==='2'){if(!R)init3();else update3()}requestAnimationFrame(()=>{fit();renderAll()})}
-$('t1').onclick=()=>show('1');$('t2').onclick=()=>show('2');
+const HINT={3:'Final look: click an object, edit its prompt or reference image on the right, press Refine + regenerate mesh. Each asset keeps its last 5 versions; click a thumbnail to go back. Drag = orbit, right-drag = pan, wheel = zoom.',1:'Detected objects: click to select, shift-click (range) or ctrl-click (toggle) for several. Untick "keep" to drop an object. Refine until each 2D image is one clean, complete object, then confirm.',2:'Top-down (left): drag blocks · shift-click / drag-select · white corner = resize · yellow corner = rotate (shift = 15° steps) · Ctrl+Z / Ctrl+Y.   3D (right): click an object, then use the gizmo: G move (X/Y/Z arrows), R rotate, S scale · snap + step sizes in the toolbar · drag empty space = orbit · right-drag = pan · wheel = zoom.'};
+function show(v){if(v==='2'&&!confirmed)return;if(v==='3'&&$('t3').disabled)return;view=v;$('lay').classList.toggle('v3',v==='3');$('t3').classList.toggle('on',v==='3');$('t1w').style.display=v==='1'?'flex':'none';$('gal').style.display=v==='1'?'grid':'none';$('galbar').style.display=v==='1'?'flex':'none';$('lay').style.display=(v==='2'||v==='3')?'flex':'none';$('t1').classList.toggle('on',v==='1');$('t2').classList.toggle('on',v==='2');$('hint').textContent=HINT[v];
+ if(v==='2'||v==='3'){if(!R)init3();else update3()}requestAnimationFrame(()=>{fit();renderAll()})}
+$('t1').onclick=()=>show('1');$('t2').onclick=()=>show('2');$('t3').onclick=()=>show('3');
+function enableT3(){$('t3').disabled=false}
+$('g3gen').onclick=()=>$('gen').click();$('g3id').onclick=()=>$('mid').click();$('g3exp').onclick=()=>$('mex').click();
 addEventListener('resize',fit);syncRoom();show('1');updUndo();
 </script></body></html>

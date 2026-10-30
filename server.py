@@ -52,6 +52,12 @@ def mock_prompt(body):
             bt = io.BytesIO(); im.save(bt, "PNG"); FILES[f"{pid}_mask_{i}.png"] = bt.getvalue()
         out["b"] = {"text": [json.dumps([boxes])]}
         out["v"] = {"images": [{"filename": f"{pid}_mask_{i}.png", "subfolder": "room", "type": "output"} for i in range(k)]}
+    elif any(n["class_type"] == "TextEncodeQwenImageEditPlus" for n in p.values()):
+        from PIL import Image, ImageDraw
+        import random
+        im = Image.new("RGB", (1024, 1024), (128, 128, 128)); ImageDraw.Draw(im).rectangle((250, 250, 770, 770), fill=tuple(random.randint(60, 220) for _ in range(3)))
+        bt = io.BytesIO(); im.save(bt, "PNG"); FILES[f"{pid}_ref.png"] = bt.getvalue()
+        out["sv"] = {"images": [{"filename": f"{pid}_ref.png", "subfolder": "room", "type": "output"}]}
     else:
         n = len(FILES); FILES[f"{pid}.glb"] = _glb([(.8,.4,.3),(.3,.6,.8),(.4,.7,.4)][n % 3])
         out["322"] = {"3d": [{"filename": f"{pid}.glb", "subfolder": "room", "type": "output"}]}
