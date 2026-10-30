@@ -37,9 +37,9 @@ main{flex:1;position:relative;min-width:0;display:flex;flex-direction:column}
 <h1>Room Builder <span id="conn">checking…</span></h1>
 <div class="sec"><h2>1 · Room photo</h2>
 <label class="b">Choose image<input id="photo" type="file" accept="image/*" hidden></label> <span id="pname" class="st"></span>
-<div style="margin-top:8px"><textarea id="prompt">bed, desk, chair, bookshelf, rug, television, backpack, door, wardrobe, lamp, plant, dresser</textarea><div class="st" style="margin-top:3px">comma-separated labels, one SAM 3.1 job each (add :N to allow N instances)</div></div>
+<div class="r" style="margin-top:8px"><button id="suggest" disabled title="a vision model lists the objects it sees in the photo">1 · Detect assets</button></div><div style="margin-top:6px"><textarea id="prompt" placeholder="Click Detect assets and the list of objects appears here. Edit freely: add, remove or rename."></textarea><div class="st" style="margin-top:3px">comma-separated labels, one SAM 3.1 job each (add :N to allow N instances)</div></div>
 <input id="lic" type="text" placeholder="Photo source / licence (goes in provenance)" style="margin-top:6px">
-<div class="r"><button id="detect" class="p" disabled>Detect + crop assets</button></div></div>
+<div class="r"><button id="detect" class="p" disabled>2 · Crop assets</button></div></div>
 <div class="sec"><h2>2 · Refine 2D assets <span class="st">(Qwen-Image-Edit 2511, open weights)</span></h2>
 <div class="st" id="selinfo">click cards to select · shift/ctrl-click for several</div>
 <div class="r"><button id="refSel" disabled>Refine selected</button><button id="refAll" disabled>Refine all kept</button></div></div>
@@ -126,7 +126,7 @@ function updUndo(){for(const id of ['undo','bundo'])$(id).disabled=!U.length;for
 $('undo').onclick=$('bundo').onclick=undo;$('redo').onclick=$('bredo').onclick=redo;
 
 /* ---------------- detect ---------------- */
-$('photo').onchange=async e=>{photoFile=e.target.files[0];photoName=null;photoName=null;$('pname').textContent=photoFile?photoFile.name:'';$('detect').disabled=!photoFile;if(photoFile)photoImg=await loadImg(photoFile);drawDM()};
+$('photo').onchange=async e=>{photoFile=e.target.files[0];photoName=null;photoName=null;$('pname').textContent=photoFile?photoFile.name:'';$('detect').disabled=!photoFile;$('suggest').disabled=!photoFile;if(photoFile)photoImg=await loadImg(photoFile);drawDM()};
 const labelsOf=()=>$('prompt').value.split(',').map(s=>s.trim()).filter(Boolean);
 async function detectLabel(name,raw,k){const g={"1":{inputs:{image:name},class_type:'LoadImage'},"2":{inputs:{ckpt_name:'sam3.1_multiplex_fp16.safetensors'},class_type:'CheckpointLoaderSimple'},
  "t":{inputs:{text:raw,clip:["2",1]},class_type:'CLIPTextEncode'},"s":{inputs:{threshold:0.5,refine_iterations:2,individual_masks:true,model:["2",0],image:["1",0],conditioning:["t",0]},class_type:'SAM3_Detect'},
@@ -141,7 +141,7 @@ function makeCut(photo,maskImg,b){const W=photo.width,H=photo.height;const mc=do
  const S=1024,m=0.9,sc=Math.min(S*m/cut.width,S*m/cut.height),sq=document.createElement('canvas');sq.width=sq.height=S;const sx=sq.getContext('2d');sx.fillStyle='#808080';sx.fillRect(0,0,S,S);sx.drawImage(cut,(S-cut.width*sc)/2,(S-cut.height*sc)/2,cut.width*sc,cut.height*sc);return{cut,sq}}
 $('detect').onclick=async()=>{$('detect').disabled=true;try{
  log('uploading photo…');const name=await upload(photoFile,'room_'+Date.now()+'.png');photoName=name;const photo=photoImg||await loadImg(photoFile);
- const labels=labelsOf();log(`detecting ${labels.length} label(s) (SAM 3.1)…`);
+ if(!labelsOf().length){await suggestAssets()}const labels=labelsOf();log(`detecting ${labels.length} label(s) (SAM 3.1)…`);
  const res=await Promise.all(labels.map((raw,k)=>detectLabel(name,raw,k).catch(e=>{log('  '+raw+': '+e.message.slice(0,160));return{boxes:[],masks:[]}})));
  A=[];SEL.clear();sel=null;confirmed=false;let n=0;
  for(const [k,r] of res.entries()){const lab=labels[k].split(':')[0].trim();const c=Math.min(r.boxes.length,r.masks.length);log(`  ${lab}: ${c} found`);
@@ -150,6 +150,19 @@ $('detect').onclick=async()=>{$('detect').disabled=true;try{
     w:p[0],d:p[1],h:p[2],x:0,y:0,rot:0,z:0,color:pal(n),glb:null,box:{cx:(b.x+b.width/2)/photo.width,bot:(b.y+b.height)/photo.height,w:b.width/photo.width},score:b.score});n++}}
  dedupe();log(`total: ${A.length} asset(s)`);U.length=0;RE.length=0;estimateRoom();autoLayout();sel=A.length?0:null;if(A.length)SEL.add(A[0].id);renderAll();show('1');
 }catch(e){log('ERROR '+e.message)}finally{$('detect').disabled=!photoFile}};
+const SKIPL=/^(wall|walls|floor|ceiling|room|window curtain)s?$/i;
+async function suggestAssets(){const b=$('suggest');b.disabled=true;try{
+ log('uploading photo…');if(!photoName)photoName=await upload(photoFile,'room_'+Date.now()+'.png');
+ log('asking the vision model (Qwen2.5-VL) what is in the room…');
+ const g={"1":{inputs:{image:photoName},class_type:'LoadImage'},"c":{inputs:{clip_name:'qwen_2.5_vl_7b_fp8_scaled.safetensors',type:'qwen_image',device:'default'},class_type:'CLIPLoader'},
+  "t":{inputs:{clip:["c",0],prompt:'List every separate piece of furniture, appliance, decor item and object visible in this room photo, as a comma-separated list of short singular nouns (e.g. "bed, desk, office chair, bookshelf"). Do not include walls, floor or ceiling. Output only the list.',max_length:160,sampling_mode:'off',image:["1",0]},class_type:'TextGenerate'},
+  "b":{inputs:{source:["t",0]},class_type:'PreviewAny'}};
+ const id=await submit(g);await wait(id,'suggest');const o=await outputs(id);let txt='';(function w(x){if(typeof x==='string'){if(!txt&&x.trim())txt=x}else if(Array.isArray(x))x.forEach(w);else if(x&&typeof x==='object')Object.values(x).forEach(w)})(o.b||o);
+ const seen=new Set(),L=[];for(let t of txt.replace(/\n|;|•|\*|\d+\./g,',').split(',')){t=t.trim().toLowerCase().replace(/^(a|an|the)\s+/,'').replace(/[.]+$/,'');if(!t||t.length>30||SKIPL.test(t)||seen.has(t))continue;seen.add(t);L.push(t)}
+ if(!L.length)throw new Error('model returned no list');$('prompt').value=L.slice(0,25).join(', ');log(`found ${L.length} object type(s): edit the list if you like, then press Crop assets.`);
+}catch(e){log('Detect assets failed: '+String(e&&e.message||e).slice(0,200)+'\nFalling back to a common-furniture list; edit it, then Crop assets.');$('prompt').value='bed, desk, chair, bookshelf, rug, television, backpack, door, wardrobe, lamp, plant, dresser'}finally{b.disabled=!photoFile}}
+$('suggest').onclick=suggestAssets;
+
 
 /* ---------------- room + layout ---------------- */
 function estimateRoom(){const foot=A.reduce((s,a)=>s+(a.base==='rug'?0:a.w*a.d),0);const area=Math.max(foot*2.8,9e4);let W=Math.sqrt(area*1.25);const mx=Math.max(0,...A.map(a=>Math.max(a.w,a.d)));W=Math.max(W,mx*1.4);ROOM.w=Math.round(W/10)*10;ROOM.d=Math.round(Math.max(area/W,mx*1.1)/10)*10;ROOM.x0=0;ROOM.y0=0;fitView();syncRoom()}

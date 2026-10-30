@@ -43,7 +43,9 @@ def _glb(color):
     return struct.pack("<4sII", b"glTF", 2, 28 + len(jb) + len(bin_)) + struct.pack("<I4s", len(jb), b"JSON") + jb + struct.pack("<I4s", len(bin_), b"BIN\0") + bin_
 def mock_prompt(body):
     pid = uuid.uuid4().hex; p = body["prompt"]; out = {}
-    if any(n["class_type"] == "SAM3_Detect" for n in p.values()):
+    if any(n["class_type"] == "TextGenerate" for n in p.values()):
+        out["b"] = {"text": ["Bed, desk, office chair, bookshelf, rug, television, backpack, door, wardrobe, table lamp, potted plant, dresser, wall, floor."]}
+    elif any(n["class_type"] == "SAM3_Detect" for n in p.values()):
         from PIL import Image, ImageDraw
         k = 2 if "bed" in json.dumps(p) else 1
         boxes = [{"x": 40 + 120 * i, "y": 80 + 30 * i, "width": 100, "height": 120, "score": .9} for i in range(k)]
