@@ -18,6 +18,7 @@ button.p{background:var(--acc);border-color:var(--acc)}button.go{background:#2b8
 main{flex:1;position:relative;min-width:0;display:flex;flex-direction:column}
 #tabs{display:flex;gap:6px;padding:10px;flex:none}
 #gal{flex:1;overflow:auto;padding:4px 14px 70px;display:none;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;align-content:start}
+#t1w{flex:1;min-height:0;display:none;flex-direction:column}#detmap{height:44%;min-height:200px;flex:none;padding:0 14px 6px;position:relative}#dm{width:100%;height:100%;background:#0e1013;border-radius:8px;display:block;cursor:crosshair}#dmbar{position:absolute;left:24px;top:8px;display:flex;gap:6px;align-items:center}#dmbar .st{background:rgba(20,22,26,.8);padding:2px 6px;border-radius:6px}
 #galbar{position:absolute;left:0;right:0;bottom:0;padding:10px 14px;background:linear-gradient(transparent,#14161a 40%);display:none;gap:8px;align-items:center}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px;cursor:pointer;user-select:none}
 .card.sel{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc)}.card canvas{width:100%;aspect-ratio:1;background:#0e1013;border-radius:6px;display:block}
@@ -46,7 +47,7 @@ main{flex:1;position:relative;min-width:0;display:flex;flex-direction:column}
 </aside>
 <main>
 <div id="tabs"><button id="t1" class="on">1 · Detected objects</button><button id="t2" disabled title="confirm assets first">2 · Layout: top-down + 3D</button></div>
-<div id="gal"></div>
+<div id="t1w"><div id="detmap"><canvas id="dm"></canvas><div id="dmbar"><button id="dadd">+ Add box</button><span class="st" id="dmhint">what the model detected: drag a box to move it · white corner resizes · double-click to rename</span></div></div><div id="gal"></div></div>
 <div id="galbar"><button id="confirm" class="go" disabled>Confirm assets → Next: Layout (arrange the objects in the room, top-down + 3D)</button><span class="st" id="galinfo"></span></div>
 <div id="lay">
 <div id="bar">
@@ -116,16 +117,16 @@ function updUndo(){for(const id of ['undo','bundo'])$(id).disabled=!U.length;for
 $('undo').onclick=$('bundo').onclick=undo;$('redo').onclick=$('bredo').onclick=redo;
 
 /* ---------------- detect ---------------- */
-$('photo').onchange=async e=>{photoFile=e.target.files[0];$('pname').textContent=photoFile?photoFile.name:'';$('detect').disabled=!photoFile;if(photoFile)photoImg=await loadImg(photoFile)};
+$('photo').onchange=async e=>{photoFile=e.target.files[0];$('pname').textContent=photoFile?photoFile.name:'';$('detect').disabled=!photoFile;if(photoFile)photoImg=await loadImg(photoFile);drawDM()};
 const labelsOf=()=>$('prompt').value.split(',').map(s=>s.trim()).filter(Boolean);
 async function detectLabel(name,raw,k){const g={"1":{inputs:{image:name},class_type:'LoadImage'},"2":{inputs:{ckpt_name:'sam3.1_multiplex_fp16.safetensors'},class_type:'CheckpointLoaderSimple'},
  "t":{inputs:{text:raw,clip:["2",1]},class_type:'CLIPTextEncode'},"s":{inputs:{threshold:0.5,refine_iterations:2,individual_masks:true,model:["2",0],image:["1",0],conditioning:["t",0]},class_type:'SAM3_Detect'},
  "b":{inputs:{source:["s",1]},class_type:'PreviewAny'},"m":{inputs:{mask:["s",0]},class_type:'MaskToImage'},"v":{inputs:{filename_prefix:'room/mask_'+k,images:["m",0]},class_type:'SaveImage'}};
  const id=await submit(g);await wait(id,'detect '+raw);const o=await outputs(id);let boxes=[];try{const j=JSON.parse((o.b.text||[])[0]);boxes=Array.isArray(j[0])?j[0]:j}catch(e){}
  const masks=(o.v?files(o.v):[]).sort((a,b)=>a.filename.localeCompare(b.filename,undefined,{numeric:true}));return{boxes,masks}}
-function makeCut(photo,maskImg,b){const W=photo.width,H=photo.height;const mc=document.createElement('canvas');mc.width=W;mc.height=H;const mx=mc.getContext('2d');mx.drawImage(maskImg,0,0,W,H);const md=mx.getImageData(0,0,W,H).data;
+function makeCut(photo,maskImg,b){const W=photo.width,H=photo.height;const mc=document.createElement('canvas');mc.width=W;mc.height=H;const mx=mc.getContext('2d');if(maskImg)mx.drawImage(maskImg,0,0,W,H);const md=mx.getImageData(0,0,W,H).data;const inB=(px,py)=>px>=b.x-2&&px<=b.x+b.width+2&&py>=b.y-2&&py<=b.y+b.height+2;
  const full=document.createElement('canvas');full.width=W;full.height=H;const fx=full.getContext('2d');fx.drawImage(photo,0,0);const fd=fx.getImageData(0,0,W,H);
- let x0=W,y0=H,x1=0,y1=0;for(let i=0;i<W*H;i++){const al=md[i*4];fd.data[i*4+3]=al;if(al>128){const px=i%W,py=(i/W)|0;if(px<x0)x0=px;if(px>x1)x1=px;if(py<y0)y0=py;if(py>y1)y1=py}}
+ let x0=W,y0=H,x1=0,y1=0;for(let i=0;i<W*H;i++){const px=i%W,py=(i/W)|0;let al=maskImg?md[i*4]:255;if(!inB(px,py))al=0;fd.data[i*4+3]=al;if(al>128){if(px<x0)x0=px;if(px>x1)x1=px;if(py<y0)y0=py;if(py>y1)y1=py}}
  fx.putImageData(fd,0,0);if(x1<=x0||y1<=y0){x0=Math.max(0,b.x|0);y0=Math.max(0,b.y|0);x1=Math.min(W,x0+(b.width|0));y1=Math.min(H,y0+(b.height|0))}
  const cut=document.createElement('canvas');cut.width=Math.max(2,x1-x0);cut.height=Math.max(2,y1-y0);cut.getContext('2d').drawImage(full,x0,y0,cut.width,cut.height,0,0,cut.width,cut.height);
  const S=1024,m=0.9,sc=Math.min(S*m/cut.width,S*m/cut.height),sq=document.createElement('canvas');sq.width=sq.height=S;const sx=sq.getContext('2d');sx.fillStyle='#808080';sx.fillRect(0,0,S,S);sx.drawImage(cut,(S-cut.width*sc)/2,(S-cut.height*sc)/2,cut.width*sc,cut.height*sc);return{cut,sq}}
@@ -136,7 +137,7 @@ $('detect').onclick=async()=>{$('detect').disabled=true;try{
  A=[];SEL.clear();sel=null;confirmed=false;let n=0;
  for(const [k,r] of res.entries()){const lab=labels[k].split(':')[0].trim();const c=Math.min(r.boxes.length,r.masks.length);log(`  ${lab}: ${c} found`);
   for(let i=0;i<c;i++){const b=r.boxes[i];const mi=await loadImg(await getFile(r.masks[i]));const{cut,sq}=makeCut(photo,mi,b);const origBlob=await new Promise(res=>sq.toBlob(res,'image/png'));const p=prior(lab);
-   A.push({id:'asset_'+String(n).padStart(2,'0'),label:lab+(c>1?' '+(i+1):''),base:lab,context:'',refBlob:null,refName:'',cut,origBlob,blob:origBlob,view:cut,refined:false,include:true,status:'',mesh:'',
+   A.push({id:'asset_'+String(n).padStart(2,'0'),label:lab+(c>1?' '+(i+1):''),base:lab,maskImg:mi,bb:{x:b.x,y:b.y,w:b.width,h:b.height},context:'',refBlob:null,refName:'',cut,origBlob,blob:origBlob,view:cut,refined:false,include:true,status:'',mesh:'',
     w:p[0],d:p[1],h:p[2],x:0,y:0,rot:0,z:0,color:pal(n),glb:null,box:{cx:(b.x+b.width/2)/photo.width,bot:(b.y+b.height)/photo.height,w:b.width/photo.width},score:b.score});n++}}
  log(`total: ${A.length} asset(s)`);U.length=0;RE.length=0;estimateRoom();autoLayout();sel=A.length?0:null;if(A.length)SEL.add(A[0].id);renderAll();show('1');
 }catch(e){log('ERROR '+e.message)}finally{$('detect').disabled=!photoFile}};
@@ -197,28 +198,28 @@ $('gen').onclick=async()=>{const t=A.filter(a=>a.include&&!a.glb);if(!t.length){
 /* ---------------- gallery ---------------- */
 let lastClick=null;
 function updBtns(){const n=A.length,k=A.filter(a=>a.include).length;$('refSel').disabled=!SEL.size;$('refAll').disabled=!k;$('confirm').disabled=!k;$('galinfo').textContent=n?`${k} of ${n} kept · ${SEL.size} selected`:'';$('selinfo').textContent=n?`${SEL.size} selected (click · shift/ctrl-click for several)`:'click cards to select · shift/ctrl-click for several';$('multi').textContent=SEL.size>1?`· ${SEL.size} selected`:''}
-function thumb(el,src){const s=Math.min(el.width/src.width,el.height/src.height),c=el.getContext('2d');c.clearRect(0,0,el.width,el.height);c.drawImage(src,(el.width-src.width*s)/2,(el.height-src.height*s)/2,src.width*s,src.height*s)}
+function thumb(el,src){if(!src)return;const s=Math.min(el.width/src.width,el.height/src.height),c=el.getContext('2d');c.clearRect(0,0,el.width,el.height);c.drawImage(src,(el.width-src.width*s)/2,(el.height-src.height*s)/2,src.width*s,src.height*s)}
 function renderGallery(){const G=$('gal');G.innerHTML='';A.forEach((a,i)=>{const c=document.createElement('div');c.className='card'+(SEL.has(a.id)?' sel':'');
  c.innerHTML=`<canvas width=300 height=300></canvas><div class="t"><input type="checkbox" ${a.include?'checked':''} title="keep in room"><span class="sw" style="background:${a.color}"></span><input type="text" value="${a.label}"></div><div style="margin-top:4px"><span class="badge ${a.status==='err'?'err':a.status==='refining'?'busy':a.refined?'ok':''}">${a.status==='refining'?'refining…':a.status==='err'?'refine failed':a.refined?'refined':'cutout'}</span> <span class="badge ${a.mesh==='done'?'ok':a.mesh==='err'?'err':a.mesh?'busy':''}">${a.mesh==='done'?'mesh ✓':a.mesh||'no mesh'}</span></div>`;
  thumb(c.querySelector('canvas'),a.view);
  c.onclick=e=>{if(e.target.tagName==='INPUT')return;if(e.shiftKey&&lastClick!=null&&!e.ctrlKey){const[lo,hi]=[Math.min(lastClick,i),Math.max(lastClick,i)];for(let k=lo;k<=hi;k++)SEL.add(A[k].id);sel=i;renderAll()}else{lastClick=i;pick(a.id,e.ctrlKey||e.metaKey)}};
  c.querySelector('input[type=checkbox]').onchange=e=>{pushUndo();a.include=e.target.checked;updBtns();draw2();update3();renderLayers()};
- c.querySelector('input[type=text]').oninput=e=>{a.label=e.target.value;draw2()};G.appendChild(c)})}
+ c.querySelector('input[type=text]').oninput=e=>{a.label=e.target.value;draw2();drawDM()};G.appendChild(c)})}
 
 /* ---------------- inspector ---------------- */
 function inspector(){const a=cur();const has=!!a;$('insp').style.display=has?'block':'none';$('none').style.display=has?'none':'block';const p=$('prev');
- if(!has){p.removeAttribute('src');return}const c=document.createElement('canvas');c.width=c.height=300;thumb(c,a.view);p.src=c.toDataURL();
+ p.style.display=has?'':'none';if(!has){p.removeAttribute('src');return}const c=document.createElement('canvas');c.width=c.height=300;thumb(c,a.view);p.src=c.toDataURL();
  $('iname').value=a.label;$('ictx').value=a.context;$('irefn').textContent=a.refName||'';$('iw').value=Math.round(a.w);$('id').value=Math.round(a.d);$('ih').value=Math.round(a.h);$('ir').value=Math.round(a.rot);$('ix').value=Math.round(a.x);$('iy').value=Math.round(a.y);
  $('fp').textContent=`· covers ${(a.w*a.d/1e4).toFixed(2)} m²`}
-$('iname').oninput=e=>{const a=cur();if(a){a.label=e.target.value;draw2();renderGallery();renderLayers()}};$('ictx').oninput=e=>{for(const a of selected())a.context=e.target.value};
+$('iname').oninput=e=>{const a=cur();if(a){a.label=e.target.value;draw2();drawDM();renderGallery();renderLayers()}};$('ictx').oninput=e=>{for(const a of selected())a.context=e.target.value};
 $('iref').onchange=e=>{const f=e.target.files[0];if(f)for(const a of selected()){a.refBlob=f;a.refName=f.name}$('irefn').textContent=f?f.name:''};$('iclr').onclick=()=>{for(const a of selected()){a.refBlob=null;a.refName=''}$('irefn').textContent=''};
 let numUndo=false;
 for(const [id,k] of [['iw','w'],['id','d'],['ih','h'],['ir','rot'],['ix','x'],['iy','y']]){$(id).onfocus=()=>numUndo=false;$(id).oninput=e=>{const a=cur();if(!a)return;if(!numUndo){pushUndo();numUndo=true}a[k]=+e.target.value;$('fp').textContent=`· covers ${(a.w*a.d/1e4).toFixed(2)} m²`;draw2();sync3(a);renderLayers()}}
-function renderAll(){renderGallery();inspector();updBtns();draw2();renderLayers();update3();updUndo()}
+function renderAll(){drawDM();renderGallery();inspector();updBtns();draw2();renderLayers();update3();updUndo()}
 
 /* ---------------- top-down layout ---------------- */
 const c2=$('c2'),cx=c2.getContext('2d');
-function fit(){const dp=devicePixelRatio;c2.width=c2.clientWidth*dp;c2.height=c2.clientHeight*dp;if(R){const m=$('c3');R.setSize(m.clientWidth,m.clientHeight);cam.aspect=m.clientWidth/Math.max(1,m.clientHeight);cam.updateProjectionMatrix()}draw2()}
+function fit(){drawDM();const dp=devicePixelRatio;c2.width=c2.clientWidth*dp;c2.height=c2.clientHeight*dp;if(R){const m=$('c3');R.setSize(m.clientWidth,m.clientHeight);cam.aspect=m.clientWidth/Math.max(1,m.clientHeight);cam.updateProjectionMatrix()}draw2()}
 const S=()=>Math.min((c2.width-70)/ROOM.w,(c2.height-70)/ROOM.d),O=()=>[(c2.width-ROOM.w*S())/2,(c2.height-ROOM.d*S())/2+8];
 let marq=null;
 function draw2(){if(view!=='2')return;cx.fillStyle='#14161a';cx.fillRect(0,0,c2.width,c2.height);const s=S(),[ox,oy]=O(),dp=devicePixelRatio;
@@ -255,6 +256,40 @@ addEventListener('keydown',e=>{const typing=['INPUT','TEXTAREA','SELECT'].includ
  if((e.ctrlKey||e.metaKey)&&!typing){const k=e.key.toLowerCase();if(k==='z'&&!e.shiftKey){e.preventDefault();undo();return}if(k==='y'||(k==='z'&&e.shiftKey)){e.preventDefault();redo();return}if(k==='a'&&view==='2'){e.preventDefault();A.forEach(a=>a.include&&SEL.add(a.id));renderAll();return}}
  if((e.key==='Delete'||e.key==='Backspace')&&SEL.size&&!typing){pushUndo();selected().forEach(a=>{a.include=false;sync3(a)});SEL.clear();sel=null;renderAll()}});
 $('mid').onclick=()=>{idMode=!idMode;$('mid').classList.toggle('on',idMode);A.forEach(sync3)};
+
+
+/* ---------------- detection map (step 1): colour-coded boxes on the photo ---------------- */
+let DM=null,dmDrag=null,addMode=false;
+function drawDM(){const c=$('dm');if(!c||view!=='1')return;const dp=devicePixelRatio;c.width=c.clientWidth*dp;c.height=c.clientHeight*dp;const x=c.getContext('2d');x.fillStyle='#0e1013';x.fillRect(0,0,c.width,c.height);
+ if(!photoImg){x.fillStyle='#8b93a1';x.font=`${13*dp}px system-ui`;x.textAlign='center';x.fillText('Choose a room photo to see what the model detects here',c.width/2,c.height/2);DM=null;return}
+ const W=photoImg.width,H=photoImg.height,s=Math.min(c.width/W,c.height/H),ox=(c.width-W*s)/2,oy=(c.height-H*s)/2;DM={s,ox,oy};x.drawImage(photoImg,ox,oy,W*s,H*s);
+ for(const a of A){if(!a.bb||!a.include)continue;const on=SEL.has(a.id),bx=ox+a.bb.x*s,by=oy+a.bb.y*s,bw=a.bb.w*s,bh=a.bb.h*s;
+  x.fillStyle=a.color.replace('hsl(','hsla(').replace(')',',0.16)');x.fillRect(bx,by,bw,bh);x.strokeStyle=a.color;x.lineWidth=(on?3.5:2)*dp;x.strokeRect(bx,by,bw,bh);
+  x.font=`bold ${11*dp}px system-ui`;const tw=x.measureText(a.label).width+10*dp,th=16*dp,ty=by-th<oy?by:by-th;x.fillStyle=a.color;x.fillRect(bx,ty,tw,th);x.fillStyle='#000';x.textAlign='left';x.fillText(a.label,bx+5*dp,ty+12*dp);
+  if(on&&SEL.size===1){x.fillStyle='#fff';x.fillRect(bx+bw-6*dp,by+bh-6*dp,12*dp,12*dp)}}
+ if(dmDrag&&dmDrag.mode==='new'){x.strokeStyle='#74c0fc';x.lineWidth=2*dp;x.setLineDash([6,4]);x.strokeRect(dmDrag.x0,dmDrag.y0,dmDrag.x1-dmDrag.x0,dmDrag.y1-dmDrag.y0);x.setLineDash([])}}
+const dmP=e=>{const r=$('dm').getBoundingClientRect();return[(e.clientX-r.left)*devicePixelRatio,(e.clientY-r.top)*devicePixelRatio]};
+const toPhoto=(x,y)=>[(x-DM.ox)/DM.s,(y-DM.oy)/DM.s];
+function dmHit(x,y){const[px,py]=toPhoto(x,y);let best=null;for(const a of A){if(!a.bb||!a.include)continue;if(px>=a.bb.x&&px<=a.bb.x+a.bb.w&&py>=a.bb.y&&py<=a.bb.y+a.bb.h&&(!best||a.bb.w*a.bb.h<best.bb.w*best.bb.h))best=a}return best}
+function recrop(a){const b={x:a.bb.x,y:a.bb.y,width:a.bb.w,height:a.bb.h},{cut,sq}=makeCut(photoImg,a.maskImg,b);sq.toBlob(bl=>{a.cut=cut;a.origBlob=bl;a.blob=bl;a.view=cut;a.refined=false;a.status='';a.glb=null;a.mesh='';a.box={cx:(b.x+b.width/2)/photoImg.width,bot:(b.y+b.height)/photoImg.height,w:b.width/photoImg.width};log(a.label+': re-cropped from box');renderAll()})}
+$('dadd').onclick=()=>{addMode=!addMode;$('dadd').classList.toggle('on',addMode);$('dmhint').textContent=addMode?'drag a rectangle on the photo around the missed object':'what the model detected: drag a box to move it · white corner resizes · double-click to rename'};
+$('dm').onpointerdown=e=>{if(!DM)return;const[x,y]=dmP(e),dp=devicePixelRatio;
+ if(addMode){dmDrag={mode:'new',x0:x,y0:y,x1:x,y1:y};$('dm').setPointerCapture(e.pointerId);return}
+ const a=cur();if(a&&a.bb&&a.include&&SEL.size===1){const hx=DM.ox+(a.bb.x+a.bb.w)*DM.s,hy=DM.oy+(a.bb.y+a.bb.h)*DM.s;if(Math.abs(x-hx)<12*dp&&Math.abs(y-hy)<12*dp){dmDrag={mode:'resize',a};$('dm').setPointerCapture(e.pointerId);return}}
+ const h=dmHit(x,y),add=e.shiftKey||e.ctrlKey||e.metaKey;if(!h){if(!add){SEL.clear();sel=null;renderAll()}return}
+ if(add||!SEL.has(h.id))pick(h.id,add);else{sel=A.indexOf(h);renderAll()}
+ dmDrag={mode:'move',a:h,x,y,bx:h.bb.x,by:h.bb.y,moved:false};$('dm').setPointerCapture(e.pointerId)};
+$('dm').onpointermove=e=>{if(!dmDrag||!DM)return;const[x,y]=dmP(e),W=photoImg.width,H=photoImg.height;
+ if(dmDrag.mode==='new'){dmDrag.x1=x;dmDrag.y1=y}
+ else if(dmDrag.mode==='move'){const a=dmDrag.a;dmDrag.moved=true;a.bb.x=Math.max(0,Math.min(W-a.bb.w,dmDrag.bx+(x-dmDrag.x)/DM.s));a.bb.y=Math.max(0,Math.min(H-a.bb.h,dmDrag.by+(y-dmDrag.y)/DM.s))}
+ else if(dmDrag.mode==='resize'){const a=dmDrag.a,[px,py]=toPhoto(x,y);dmDrag.moved=true;a.bb.w=Math.max(12,Math.min(W-a.bb.x,px-a.bb.x));a.bb.h=Math.max(12,Math.min(H-a.bb.y,py-a.bb.y))}
+ drawDM()};
+$('dm').onpointerup=e=>{if(!dmDrag)return;const d=dmDrag;dmDrag=null;
+ if(d.mode==='new'){const[ax,ay]=toPhoto(Math.min(d.x0,d.x1),Math.min(d.y0,d.y1)),[bx,by]=toPhoto(Math.max(d.x0,d.x1),Math.max(d.y0,d.y1));addMode=false;$('dadd').classList.remove('on');$('dmhint').textContent='box added: rename it in the right panel';
+  if(bx-ax>12&&by-ay>12){const n=A.length,lab='new object '+(n+1),p=prior('box'),bb={x:Math.max(0,ax),y:Math.max(0,ay),w:Math.min(photoImg.width,bx)-Math.max(0,ax),h:Math.min(photoImg.height,by)-Math.max(0,ay)};
+   const a={id:'asset_'+String(n).padStart(2,'0'),label:lab,base:'object',maskImg:null,bb,context:'',refBlob:null,refName:'',cut:null,origBlob:null,blob:null,view:null,refined:false,include:true,status:'',mesh:'',w:p[0],d:p[1],h:p[2],x:0,y:0,rot:0,z:0,color:pal(n),glb:null,box:{cx:0.5,bot:0.5,w:0.2},score:1};A.push(a);SEL.clear();SEL.add(a.id);sel=A.length-1;a.x=ROOM.w/2;a.y=ROOM.d/2;recrop(a)}else drawDM();return}
+ if(d.moved)recrop(d.a)};
+$('dm').ondblclick=e=>{if(!DM)return;const[x,y]=dmP(e),h=dmHit(x,y);if(h){pick(h.id,false);$('iname').focus();$('iname').select()}};
 
 /* ---------------- save / load layouts ---------------- */
 const layoutJSON=()=>({units:'cm',room_cm:[ROOM.w,ROOM.d],sizes:'estimated from typical sizes per category; edit if known',axes:'x right, y down (top-down), rot deg',input_photo:{file:photoFile?.name||null,source_licence:$('lic').value||'UNRECORDED'},
@@ -294,7 +329,7 @@ function down3(e){if(e.button!==0)return;setRay(e);const hit=ray.intersectObject
  if(e.shiftKey||e.ctrlKey){pick(a.id,true);return}if(!SEL.has(a.id)){SEL.clear();SEL.add(a.id)}sel=A.indexOf(a);pushUndo();ctl.enabled=false;const p=new THREE.Vector3();ray.ray.intersectPlane(pl,p);d3={o,dx:o.position.x-p.x,dz:o.position.z-p.z};renderGallery();inspector();renderLayers();draw2()}
 function move3(e){if(!d3)return;setRay(e);const p=new THREE.Vector3();if(!ray.ray.intersectPlane(pl,p))return;const a=d3.o.userData.a;a.x=Math.max(0,Math.min(ROOM.w,(p.x+d3.dx)*100+ROOM.w/2));a.y=Math.max(0,Math.min(ROOM.d,(p.z+d3.dz)*100+ROOM.d/2));sync3(a);inspector();draw2()}
 const HINT={1:'Detected objects: click to select, shift-click (range) or ctrl-click (toggle) for several. Untick "keep" to drop an object. Refine until each 2D image is one clean, complete object, then confirm.',2:'Top-down (left): drag blocks · shift-click / drag-select several · white corner = resize · yellow corner = rotate (shift = 15° steps) · wheel = scale, shift+wheel = rotate · Ctrl+Z / Ctrl+Y undo/redo.   3D (right): drag objects on the floor · drag empty space = rotate · right/middle-drag = pan · wheel = zoom.'};
-function show(v){if(v==='2'&&!confirmed)return;view=v;$('gal').style.display=v==='1'?'grid':'none';$('galbar').style.display=v==='1'?'flex':'none';$('lay').style.display=v==='2'?'flex':'none';$('t1').classList.toggle('on',v==='1');$('t2').classList.toggle('on',v==='2');$('hint').textContent=HINT[v];
+function show(v){if(v==='2'&&!confirmed)return;view=v;$('t1w').style.display=v==='1'?'flex':'none';$('gal').style.display=v==='1'?'grid':'none';$('galbar').style.display=v==='1'?'flex':'none';$('lay').style.display=v==='2'?'flex':'none';$('t1').classList.toggle('on',v==='1');$('t2').classList.toggle('on',v==='2');$('hint').textContent=HINT[v];
  if(v==='2'){if(!R)init3();else update3()}requestAnimationFrame(()=>{fit();renderAll()})}
 $('t1').onclick=()=>show('1');$('t2').onclick=()=>show('2');
 addEventListener('resize',fit);syncRoom();show('1');updUndo();
