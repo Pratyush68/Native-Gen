@@ -16,7 +16,11 @@ BASE = "https://cloud.comfy.org"
 HERE = os.path.dirname(os.path.abspath(__file__))
 MOCK = "--mock" in sys.argv
 PORT = int(os.environ.get("PORT", 8188))
-KEY = "" if MOCK else (os.environ.get("COMFY_API_KEY") or getpass.getpass("Comfy Cloud API key (hidden): "))
+def _keyfile():
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "key.txt")
+    try: return open(p, encoding="utf-8-sig").read()
+    except OSError: return ""
+KEY = "" if MOCK else (os.environ.get("COMFY_API_KEY") or _keyfile().strip() or getpass.getpass("Comfy Cloud API key (hidden): "))
 KEY = KEY.strip().strip('"').strip("'")
 
 # ---------------- mock backend ----------------
