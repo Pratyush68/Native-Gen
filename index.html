@@ -43,6 +43,7 @@ main{flex:1;position:relative;min-width:0;display:flex;flex-direction:column}
 <div class="sec"><h2>2 · Refine 2D assets <span class="st">(Qwen-Image-Edit 2511, open weights)</span></h2>
 <div class="st" id="selinfo">click cards to select · shift/ctrl-click for several</div>
 <div class="r"><button id="refSel" disabled>Refine selected</button><button id="refAll" disabled>Refine all kept</button></div></div>
+<div class="sec"><h2>3 · Room structure <span class="st">(floor, walls, ceiling)</span></h2><div class="st">Walls keep posters and hangers as part of the wall texture. Draw window/door openings to hollow them out; curtains stay as objects.</div><textarea id="sprompt" style="height:36px;margin-top:6px">floor, wall:3, ceiling</textarea><div class="r"><button id="sdetect" disabled>Detect structure</button><button id="srefAll" disabled>Refine structure</button></div></div>
 <div class="sec"><h2>Undo</h2><div class="r" style="margin-top:0"><button id="undo">Undo (Ctrl+Z)</button><button id="redo">Redo (Ctrl+Y)</button></div></div>
 <div id="log"></div>
 </aside>
@@ -55,7 +56,7 @@ main{flex:1;position:relative;min-width:0;display:flex;flex-direction:column}
 <div id="bar">
 <button id="bundo">↶ Undo</button><button id="bredo">↷ Redo</button>
 <select id="rpre" title="room size"><option value="">Room size…</option><option>300x300</option><option>400x300</option><option>400x400</option><option>500x400</option><option>500x500</option><option>600x500</option><option>800x600</option></select>
-<input id="rw" type="number" title="room width cm"> × <input id="rd" type="number" title="room depth cm"> <span class="st">cm (estimated)</span>
+<input id="rw" type="number" title="room width cm"> × <input id="rd" type="number" title="room depth cm"> <span class="st">cm (estimated)</span> <input id="rh" type="number" title="wall height cm" style="width:64px"><span class="st">h</span><button id="fcol" title="floor block colour in the top-down view">Floor: dark</button>
 <button id="auto">Auto-layout from photo</button><button id="sUp">All ×1.1</button><button id="sDn">All ×0.9</button><button id="mid">Colour ID</button><button id="vreset" title="reset the 3D camera (Home)">Reset view</button><span id="gz" style="display:inline-flex;gap:4px;align-items:center;border-left:1px solid var(--line);padding-left:8px"><button id="gMove" class="on" title="Move (G)">Move G</button><button id="gRot" title="Rotate (R)">Rotate R</button><button id="gScale" title="Scale (S)">Scale S</button><label class="st" style="display:flex;gap:3px;align-items:center"><input id="gSnap" type="checkbox" checked style="width:auto"> snap</label><select id="gStep" title="move step" style="width:auto"><option value="1">1 cm</option><option value="5">5 cm</option><option value="10" selected>10 cm</option><option value="25">25 cm</option><option value="50">50 cm</option></select><select id="gRstep" title="rotation step" style="width:auto"><option value="5">5°</option><option value="15" selected>15°</option><option value="45">45°</option><option value="90">90°</option></select><select id="gSstep" title="scale step" style="width:auto"><option value="0.05">×0.05</option><option value="0.1" selected>×0.1</option><option value="0.25">×0.25</option></select></span>
 <input id="lname" type="text" placeholder="layout name"><button id="lsave">Save layout</button><select id="lload"><option value="">Load saved…</option></select><label class="b">Open file<input id="fj" type="file" accept=".json" hidden></label><button id="mex">Export .json</button>
 <button id="gen" class="go">Confirm layout &amp; generate all meshes</button>
@@ -65,7 +66,8 @@ main{flex:1;position:relative;min-width:0;display:flex;flex-direction:column}
 <div id="hint"></div>
 </main>
 <aside id="right">
-<div class="sec"><h2>Selected asset <span class="st" id="multi"></span></h2><img id="prev" alt=""><div id="none" class="st" style="margin-top:6px">nothing selected</div>
+<div class="sec" id="ssec" style="display:none"><h2>Structure · <span id="stitle"></span></h2><canvas id="sprev" width="520" height="520" style="width:100%;aspect-ratio:1;background:#0e1013;border-radius:8px;cursor:crosshair;touch-action:none"></canvas><div class="st" id="sprevhint" style="margin-top:4px"></div><div class="r" id="orow"><button id="oadd">+ Window opening</button><button id="oaddD">+ Door opening</button><button id="odel">Delete opening</button></div><div class="st" style="margin-top:8px">Context for refinement (material, colour, what to keep)</div><textarea id="sctx" placeholder="e.g. warm beige plaster wall with a poster, keep the string lights"></textarea><div class="r"><button id="sref" class="p">Refine this</button><button id="srev">Original</button></div><div class="r" style="align-items:center"><label class="st"><input id="sshow" type="checkbox" style="width:auto"> include in room</label><select id="sassign" style="width:auto" title="assign this texture to another wall"></select></div></div>
+<div class="sec" id="asec"><h2>Selected asset <span class="st" id="multi"></span></h2><img id="prev" alt=""><div id="none" class="st" style="margin-top:6px">nothing selected</div>
 <div id="insp" style="display:none">
 <input id="iname" type="text" style="margin-top:8px"><div class="st" id="nameNote" style="margin-top:3px">The name is also used as context: &quot;TV table&quot; means the table itself, not what is on it.</div>
 <div class="st" style="margin-top:6px">Context for refinement (what it is, material, colour…)</div><textarea id="ictx" placeholder="e.g. single bed with blue patterned quilt and wooden frame"></textarea>
@@ -86,7 +88,10 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {TransformControls} from 'three/addons/controls/TransformControls.js';
 const $=id=>document.getElementById(id);
 const log=m=>{const l=$('log');l.textContent+=m+'\n';l.scrollTop=l.scrollHeight};
-let A=[],SEL=new Set(),sel=null,idMode=false,photoFile=null,photoImg=null,view='1',confirmed=false;const ROOM={w:400,d:300};
+let A=[],SEL=new Set(),sel=null,idMode=false,photoFile=null,photoImg=null,view='1',confirmed=false;const ROOM={w:400,d:300,x0:0,y0:0,h:250,fcol:'dark'},VIEW={x:-80,y:-80,w:560,h:460};let selS=null,photoName=null;
+const CX=()=>ROOM.x0+ROOM.w/2,CY=()=>ROOM.y0+ROOM.d/2;
+function fitView(){VIEW.x=ROOM.x0-ROOM.w*0.2;VIEW.y=ROOM.y0-ROOM.d*0.2;VIEW.w=ROOM.w*1.4;VIEW.h=ROOM.d*1.4}
+function ensureView(){if(ROOM.x0<VIEW.x||ROOM.y0<VIEW.y||ROOM.x0+ROOM.w>VIEW.x+VIEW.w||ROOM.y0+ROOM.d>VIEW.y+VIEW.h)fitView()}
 const pal=i=>`hsl(${Math.round((i*137.508)%360)},80%,55%)`;
 const PRIOR={bed:[100,200,60],desk:[120,60,75],chair:[50,50,90],bookshelf:[80,30,180],rug:[160,230,2],television:[55,45,45],backpack:[30,20,45],door:[90,10,200],wardrobe:[100,60,190],lamp:[30,30,45],plant:[35,35,50],dresser:[90,45,90],sofa:[200,90,85],armchair:[85,85,90],table:[110,60,75],nightstand:[40,40,55],box:[40,40,40]};
 const prior=l=>{l=l.toLowerCase();for(const k in PRIOR)if(l.includes(k))return PRIOR[k];return[60,60,60]};
@@ -114,14 +119,14 @@ fetch('/api/user').then(r=>{$('conn').textContent=r.ok?'cloud connected':'proxy 
 const U=[],RE=[];
 const snap=()=>JSON.stringify({room:{...ROOM},a:A.map(a=>({id:a.id,x:a.x,y:a.y,w:a.w,d:a.d,h:a.h,rot:a.rot,include:a.include,label:a.label,z:a.z||0,lift:a.lift||0}))});
 function pushUndo(){const s=snap();if(U[U.length-1]!==s){U.push(s);if(U.length>150)U.shift()}RE.length=0;updUndo()}
-function restore(s){const j=JSON.parse(s);ROOM.w=j.room.w;ROOM.d=j.room.d;j.a.forEach(r=>{const a=byId(r.id);if(a)Object.assign(a,r)});syncRoom();renderAll();update3()}
+function restore(s){const j=JSON.parse(s);Object.assign(ROOM,j.room);j.a.forEach(r=>{const a=byId(r.id);if(a)Object.assign(a,r)});syncRoom();renderAll();update3()}
 function undo(){if(!U.length)return;RE.push(snap());restore(U.pop());updUndo()}
 function redo(){if(!RE.length)return;U.push(snap());restore(RE.pop());updUndo()}
 function updUndo(){for(const id of ['undo','bundo'])$(id).disabled=!U.length;for(const id of ['redo','bredo'])$(id).disabled=!RE.length}
 $('undo').onclick=$('bundo').onclick=undo;$('redo').onclick=$('bredo').onclick=redo;
 
 /* ---------------- detect ---------------- */
-$('photo').onchange=async e=>{photoFile=e.target.files[0];$('pname').textContent=photoFile?photoFile.name:'';$('detect').disabled=!photoFile;if(photoFile)photoImg=await loadImg(photoFile);drawDM()};
+$('photo').onchange=async e=>{photoFile=e.target.files[0];photoName=null;photoName=null;$('pname').textContent=photoFile?photoFile.name:'';$('detect').disabled=!photoFile;if(photoFile)photoImg=await loadImg(photoFile);drawDM()};
 const labelsOf=()=>$('prompt').value.split(',').map(s=>s.trim()).filter(Boolean);
 async function detectLabel(name,raw,k){const g={"1":{inputs:{image:name},class_type:'LoadImage'},"2":{inputs:{ckpt_name:'sam3.1_multiplex_fp16.safetensors'},class_type:'CheckpointLoaderSimple'},
  "t":{inputs:{text:raw,clip:["2",1]},class_type:'CLIPTextEncode'},"s":{inputs:{threshold:0.5,refine_iterations:2,individual_masks:true,model:["2",0],image:["1",0],conditioning:["t",0]},class_type:'SAM3_Detect'},
@@ -135,7 +140,7 @@ function makeCut(photo,maskImg,b){const W=photo.width,H=photo.height;const mc=do
  const cut=document.createElement('canvas');cut.width=Math.max(2,x1-x0);cut.height=Math.max(2,y1-y0);cut.getContext('2d').drawImage(full,x0,y0,cut.width,cut.height,0,0,cut.width,cut.height);
  const S=1024,m=0.9,sc=Math.min(S*m/cut.width,S*m/cut.height),sq=document.createElement('canvas');sq.width=sq.height=S;const sx=sq.getContext('2d');sx.fillStyle='#808080';sx.fillRect(0,0,S,S);sx.drawImage(cut,(S-cut.width*sc)/2,(S-cut.height*sc)/2,cut.width*sc,cut.height*sc);return{cut,sq}}
 $('detect').onclick=async()=>{$('detect').disabled=true;try{
- log('uploading photo…');const name=await upload(photoFile,'room_'+Date.now()+'.png');const photo=photoImg||await loadImg(photoFile);
+ log('uploading photo…');const name=await upload(photoFile,'room_'+Date.now()+'.png');photoName=name;const photo=photoImg||await loadImg(photoFile);
  const labels=labelsOf();log(`detecting ${labels.length} label(s) (SAM 3.1)…`);
  const res=await Promise.all(labels.map((raw,k)=>detectLabel(name,raw,k).catch(e=>{log('  '+raw+': '+e.message.slice(0,160));return{boxes:[],masks:[]}})));
  A=[];SEL.clear();sel=null;confirmed=false;let n=0;
@@ -147,11 +152,11 @@ $('detect').onclick=async()=>{$('detect').disabled=true;try{
 }catch(e){log('ERROR '+e.message)}finally{$('detect').disabled=!photoFile}};
 
 /* ---------------- room + layout ---------------- */
-function estimateRoom(){const foot=A.reduce((s,a)=>s+(a.base==='rug'?0:a.w*a.d),0);const area=Math.max(foot*2.8,9e4);let W=Math.sqrt(area*1.25);const mx=Math.max(0,...A.map(a=>Math.max(a.w,a.d)));W=Math.max(W,mx*1.4);ROOM.w=Math.round(W/10)*10;ROOM.d=Math.round(Math.max(area/W,mx*1.1)/10)*10;syncRoom()}
-function autoLayout(){A.forEach(a=>{a.x=a.box.cx*ROOM.w;a.y=Math.max(a.d/2,Math.min(ROOM.d-a.d/2,a.box.bot*ROOM.d-a.d/2))})}
-const syncRoom=()=>{$('rw').value=ROOM.w;$('rd').value=ROOM.d};
-const setRoom=(k,v)=>{v=+v;if(!(v>=50))return;if(!setRoom.t){pushUndo();setRoom.t=setTimeout(()=>setRoom.t=null,800)}ROOM[k]=Math.round(v);for(const a of A){a.x=Math.min(a.x,ROOM.w);a.y=Math.min(a.y,ROOM.d)}draw2();update3()};$('rw').oninput=e=>setRoom('w',e.target.value);$('rd').oninput=e=>setRoom('d',e.target.value);
-$('rpre').onchange=e=>{if(!e.target.value)return;pushUndo();const[w,d]=e.target.value.split('x').map(Number);ROOM.w=w;ROOM.d=d;syncRoom();e.target.value='';draw2();update3()};
+function estimateRoom(){const foot=A.reduce((s,a)=>s+(a.base==='rug'?0:a.w*a.d),0);const area=Math.max(foot*2.8,9e4);let W=Math.sqrt(area*1.25);const mx=Math.max(0,...A.map(a=>Math.max(a.w,a.d)));W=Math.max(W,mx*1.4);ROOM.w=Math.round(W/10)*10;ROOM.d=Math.round(Math.max(area/W,mx*1.1)/10)*10;ROOM.x0=0;ROOM.y0=0;fitView();syncRoom()}
+function autoLayout(){A.forEach(a=>{a.x=ROOM.x0+a.box.cx*ROOM.w;a.y=ROOM.y0+Math.max(a.d/2,Math.min(ROOM.d-a.d/2,a.box.bot*ROOM.d-a.d/2))})}
+const syncRoom=()=>{$('rw').value=Math.round(ROOM.w);$('rd').value=Math.round(ROOM.d);$('rh').value=Math.round(ROOM.h)};
+const setRoom=(k,v)=>{v=+v;if(!(v>=50))return;if(!setRoom.t){pushUndo();setRoom.t=setTimeout(()=>setRoom.t=null,800)}ROOM[k]=Math.round(v);for(const a of A){a.x=Math.min(a.x,ROOM.x0+ROOM.w);a.y=Math.min(a.y,ROOM.y0+ROOM.d)}ensureView();draw2();update3()};$('rh').oninput=e=>{const v=+e.target.value;if(v>=100){ROOM.h=v;update3()}};$('fcol').onclick=()=>{ROOM.fcol=ROOM.fcol==='white'?'dark':'white';$('fcol').textContent='Floor: '+(ROOM.fcol==='white'?'white':'dark');draw2()};$('rw').oninput=e=>setRoom('w',e.target.value);$('rd').oninput=e=>setRoom('d',e.target.value);
+$('rpre').onchange=e=>{if(!e.target.value)return;pushUndo();const[w,d]=e.target.value.split('x').map(Number);ROOM.w=w;ROOM.d=d;fitView();syncRoom();e.target.value='';draw2();update3()};
 $('auto').onclick=()=>{pushUndo();estimateRoom();autoLayout();draw2();update3()};
 $('sUp').onclick=()=>{pushUndo();A.forEach(a=>{a.w*=1.1;a.d*=1.1;a.h*=1.1});draw2();inspector();update3()};$('sDn').onclick=()=>{pushUndo();A.forEach(a=>{a.w*=.9;a.d*=.9;a.h*=.9});draw2();inspector();update3()};
 
@@ -166,7 +171,7 @@ function renderLayers(){const L=$('layers');if(!A.length){L.textContent='none ye
  const[bu,bd]=d.querySelectorAll('button');bu.onclick=()=>{pushUndo();a.z=(a.z||0)+1;draw2();renderLayers()};bd.onclick=()=>{pushUndo();a.z=(a.z||0)-1;draw2();renderLayers()};L.appendChild(d)})}
 
 /* ---------------- selection helpers ---------------- */
-function pick(id,add){const i=A.findIndex(a=>a.id===id);if(add){if(SEL.has(id)){SEL.delete(id);sel=SEL.size?A.findIndex(a=>a.id===[...SEL].pop()):null}else{SEL.add(id);sel=i}}else{SEL.clear();SEL.add(id);sel=i}renderAll()}
+function pick(id,add){selS=null;const i=A.findIndex(a=>a.id===id);if(add){if(SEL.has(id)){SEL.delete(id);sel=SEL.size?A.findIndex(a=>a.id===[...SEL].pop()):null}else{SEL.add(id);sel=i}}else{SEL.clear();SEL.add(id);sel=i}renderAll()}
 const selected=()=>A.filter(a=>SEL.has(a.id));
 
 /* ---------------- refine (Qwen-Image-Edit 2511 on Comfy Cloud, open weights) ---------------- */
@@ -211,17 +216,20 @@ $('gen').onclick=async()=>{enableT3();const t=A.filter(a=>a.include&&!a.glb);if(
 
 /* ---------------- gallery ---------------- */
 let lastClick=null;
-function updBtns(){const n=A.length,k=A.filter(a=>a.include).length;$('refSel').disabled=!SEL.size;$('refAll').disabled=!k;$('confirm').disabled=!k;$('galinfo').textContent=n?`${k} of ${n} kept · ${SEL.size} selected`:'';$('selinfo').textContent=n?`${SEL.size} selected (click · shift/ctrl-click for several)`:'click cards to select · shift/ctrl-click for several';$('multi').textContent=SEL.size>1?`· ${SEL.size} selected`:''}
+function updBtns(){updStructBtns();const n=A.length,k=A.filter(a=>a.include).length;$('refSel').disabled=!SEL.size;$('refAll').disabled=!k;$('confirm').disabled=!k;$('galinfo').textContent=n?`${k} of ${n} kept · ${SEL.size} selected`:'';$('selinfo').textContent=n?`${SEL.size} selected (click · shift/ctrl-click for several)`:'click cards to select · shift/ctrl-click for several';$('multi').textContent=SEL.size>1?`· ${SEL.size} selected`:''}
 function thumb(el,src){if(!src)return;const s=Math.min(el.width/src.width,el.height/src.height),c=el.getContext('2d');c.clearRect(0,0,el.width,el.height);c.drawImage(src,(el.width-src.width*s)/2,(el.height-src.height*s)/2,src.width*s,src.height*s)}
 function renderGallery(){const G=$('gal');G.innerHTML='';A.forEach((a,i)=>{const c=document.createElement('div');c.className='card'+(SEL.has(a.id)?' sel':'');
  c.innerHTML=`<canvas width=300 height=300></canvas><div class="t"><input type="checkbox" ${a.include?'checked':''} title="keep in room"><button class="cdel" title="delete this asset" style="padding:0 5px;margin-left:auto;order:9">✕</button><span class="sw" style="background:${a.color}"></span><input type="text" value="${a.label}"></div><div style="margin-top:4px"><span class="badge ${a.status==='err'?'err':a.status==='refining'||a.status==='dup'?'busy':a.refined?'ok':''}">${a.status==='dup'?'duplicate of '+a.dupOf:a.status==='refining'?'refining…':a.status==='err'?'refine failed':a.refined?'refined':'cutout'}</span> <span class="badge ${a.mesh==='done'?'ok':a.mesh==='err'?'err':a.mesh?'busy':''}">${a.mesh==='done'?'mesh ✓':a.mesh||'no mesh'}</span></div>`;
  thumb(c.querySelector('canvas'),a.view);
  c.onclick=e=>{if(e.target.tagName==='INPUT'||e.target.tagName==='BUTTON')return;if(e.shiftKey&&lastClick!=null&&!e.ctrlKey){const[lo,hi]=[Math.min(lastClick,i),Math.max(lastClick,i)];for(let k=lo;k<=hi;k++)SEL.add(A[k].id);sel=i;renderAll()}else{lastClick=i;pick(a.id,e.ctrlKey||e.metaKey)}};
  c.querySelector('.cdel').onclick=e=>{e.stopPropagation();SEL.clear();SEL.add(a.id);sel=i;deleteSel()};c.querySelector('input[type=checkbox]').onchange=e=>{pushUndo();a.include=e.target.checked;updBtns();draw2();update3();renderLayers()};
- c.querySelector('input[type=text]').oninput=e=>{a.label=e.target.value;draw2();drawDM()};G.appendChild(c)})}
+ c.querySelector('input[type=text]').oninput=e=>{a.label=e.target.value;draw2();drawDM()};G.appendChild(c)});
+ const hd=document.createElement('div');hd.style.cssText='grid-column:1/-1;margin-top:10px;color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.06em';hd.textContent='Room structure (floor, walls, ceiling): click a card to edit its texture and window openings';G.appendChild(hd);
+ for(const k of SLOTS){const it=STR[k],c=document.createElement('div');c.className='card'+(selS===k?' sel':'');c.innerHTML=`<canvas width=300 height=300></canvas><div class="t"><input type="checkbox" ${it.show?'checked':''} title="include in room"><span class="sw" style="background:#8b93a1"></span><span>${SNAME[k]}</span></div><div style="margin-top:4px"><span class="badge ${it.status==='err'?'err':it.status==='refining'?'busy':it.refined?'ok':''}">${it.status==='refining'?'refining…':it.status==='err'?'refine failed':it.refined?'refined':it.has?'texture':'empty'}</span>${it.kind==='wall'&&it.openings.length?` <span class="badge">${it.openings.length} opening(s)</span>`:''}</div>`;const cv=c.querySelector('canvas');if(it.view)thumb(cv,it.view);else{const x=cv.getContext('2d');x.fillStyle='#8b93a1';x.font='22px system-ui';x.textAlign='center';x.fillText('empty',150,155)}
+  c.onclick=e=>{if(e.target.tagName==='INPUT')return;selectStruct(k)};c.querySelector('input').onchange=e=>{it.show=e.target.checked;renderAll()};G.appendChild(c)}}
 
 /* ---------------- inspector ---------------- */
-function inspector(){renderVers();const a=cur();const has=!!a;$('insp').style.display=has?'block':'none';$('none').style.display=has?'none':'block';const p=$('prev');
+function inspector(){renderVers();$('ssec').style.display=selS?'block':'none';$('asec').style.display=selS?'none':'block';if(selS){structInsp();return}const a=cur();const has=!!a;$('insp').style.display=has?'block':'none';$('none').style.display=has?'none':'block';const p=$('prev');
  p.style.display=has?'':'none';if(!has){p.removeAttribute('src');return}const c=document.createElement('canvas');c.width=c.height=300;thumb(c,a.view);p.src=c.toDataURL();
  $('iname').value=a.label;$('ictx').value=a.context;$('irefn').textContent=a.refName||'';$('iw').value=Math.round(a.w);$('id').value=Math.round(a.d);$('ih').value=Math.round(a.h);$('ir').value=Math.round(a.rot);$('ix').value=Math.round(a.x);$('iy').value=Math.round(a.y);
  $('fp').textContent=`· covers ${(a.w*a.d/1e4).toFixed(2)} m²`;$('bbsec').style.display=a.bb?'block':'none';if(a.bb){$('bx').value=Math.round(a.bb.x);$('by').value=Math.round(a.bb.y);$('bw').value=Math.round(a.bb.w);$('bh').value=Math.round(a.bb.h)}}
@@ -231,17 +239,22 @@ let numUndo=false;
 for(const [id,k] of [['iw','w'],['id','d'],['ih','h'],['ir','rot'],['ix','x'],['iy','y']]){$(id).onfocus=()=>numUndo=false;$(id).oninput=e=>{const a=cur();if(!a)return;if(!numUndo){pushUndo();numUndo=true}a[k]=+e.target.value;$('fp').textContent=`· covers ${(a.w*a.d/1e4).toFixed(2)} m²`;draw2();sync3(a);renderLayers()}}
 
 let bbT=null;for(const [id,k] of [['bx','x'],['by','y'],['bw','w'],['bh','h']]){$(id).oninput=e=>{const a=cur();if(!a||!a.bb||!photoImg)return;const v=+e.target.value;const W=photoImg.width,H=photoImg.height;a.bb[k]=v;a.bb.w=Math.max(12,Math.min(W,a.bb.w));a.bb.h=Math.max(12,Math.min(H,a.bb.h));a.bb.x=Math.max(0,Math.min(W-a.bb.w,a.bb.x));a.bb.y=Math.max(0,Math.min(H-a.bb.h,a.bb.y));a._mb=null;drawDM();clearTimeout(bbT);bbT=setTimeout(()=>recrop(a),700)}}
-function renderAll(){updGizmo();drawDM();renderGallery();inspector();updBtns();draw2();renderLayers();update3();updUndo()}
+function renderAll(){if(SEL.size&&selS)selS=null;updGizmo();drawDM();renderGallery();inspector();updBtns();draw2();renderLayers();update3();updUndo()}
 
 /* ---------------- top-down layout ---------------- */
 const c2=$('c2'),cx=c2.getContext('2d');
 function fit(){drawDM();const dp=devicePixelRatio;c2.width=c2.clientWidth*dp;c2.height=c2.clientHeight*dp;if(R){const m=$('c3');R.setSize(m.clientWidth,m.clientHeight);cam.aspect=m.clientWidth/Math.max(1,m.clientHeight);cam.updateProjectionMatrix()}draw2()}
-const S=()=>Math.min((c2.width-70)/ROOM.w,(c2.height-70)/ROOM.d),O=()=>[(c2.width-ROOM.w*S())/2,(c2.height-ROOM.d*S())/2+8];
+const S=()=>Math.min((c2.width-70)/VIEW.w,(c2.height-70)/VIEW.h),O=()=>[(c2.width-VIEW.w*S())/2-VIEW.x*S(),(c2.height-VIEW.h*S())/2+8-VIEW.y*S()];
 let marq=null;
 function draw2(){if(view!=='2')return;cx.fillStyle='#14161a';cx.fillRect(0,0,c2.width,c2.height);const s=S(),[ox,oy]=O(),dp=devicePixelRatio;
- cx.fillStyle='#1b1e24';cx.fillRect(ox,oy,ROOM.w*s,ROOM.d*s);cx.strokeStyle='#262b33';cx.lineWidth=1;
- for(let m=0;m<=ROOM.w;m+=50){cx.beginPath();cx.moveTo(ox+m*s,oy);cx.lineTo(ox+m*s,oy+ROOM.d*s);cx.stroke()}for(let m=0;m<=ROOM.d;m+=50){cx.beginPath();cx.moveTo(ox,oy+m*s);cx.lineTo(ox+ROOM.w*s,oy+m*s);cx.stroke()}
- cx.strokeStyle='#4a5160';cx.lineWidth=3;cx.strokeRect(ox,oy,ROOM.w*s,ROOM.d*s);cx.fillStyle='#8b93a1';cx.font=`${12*dp}px system-ui`;cx.textAlign='left';cx.fillText(`${ROOM.w} cm`,ox+ROOM.w*s/2-20*dp,oy-6*dp);cx.save();cx.translate(ox-8*dp,oy+ROOM.d*s/2+20*dp);cx.rotate(-Math.PI/2);cx.fillText(`${ROOM.d} cm`,0,0);cx.restore();
+ const fx=ox+ROOM.x0*s,fy=oy+ROOM.y0*s,fw=ROOM.w*s,fh=ROOM.d*s,white=ROOM.fcol==='white';
+ cx.fillStyle=white?'#eceff3':'#0b0c0f';cx.fillRect(fx,fy,fw,fh);cx.strokeStyle=white?'#d3d8df':'#1d2026';cx.lineWidth=1;
+ for(let m=0;m<=ROOM.w;m+=50){cx.beginPath();cx.moveTo(fx+m*s,fy);cx.lineTo(fx+m*s,fy+fh);cx.stroke()}for(let m=0;m<=ROOM.d;m+=50){cx.beginPath();cx.moveTo(fx,fy+m*s);cx.lineTo(fx+fw,fy+m*s);cx.stroke()}
+ const WL={back:[fx,fy,fx+fw,fy],front:[fx,fy+fh,fx+fw,fy+fh],left:[fx,fy,fx,fy+fh],right:[fx+fw,fy,fx+fw,fy+fh]};
+ for(const k of ['back','front','left','right']){const [a1,b1,a2,b2]=WL[k],it=STR[k],on=selS===k;cx.strokeStyle=on?'#74c0fc':it.show?'#aeb6c4':'#555c68';cx.lineWidth=(on?8:5)*dp;cx.setLineDash(it.show?[]:[8*dp,6*dp]);cx.beginPath();cx.moveTo(a1,b1);cx.lineTo(a2,b2);cx.stroke();cx.setLineDash([]);
+  it.openings.forEach(o=>{if(!it.show)return;cx.strokeStyle='#74c0fc';cx.lineWidth=9*dp;cx.beginPath();if(k==='back'||k==='front'){const y=k==='back'?fy:fy+fh;cx.moveTo(fx+o.u*fw,y);cx.lineTo(fx+(o.u+o.w)*fw,y)}else{const x2=k==='left'?fx:fx+fw;cx.moveTo(x2,fy+o.u*fh);cx.lineTo(x2,fy+(o.u+o.w)*fh)}cx.stroke()})}
+ cx.fillStyle='#8b93a1';cx.font=`${11*dp}px system-ui`;cx.textAlign='left';cx.fillText(`${Math.round(ROOM.w)} cm`,fx+fw/2-20*dp,fy-10*dp);cx.save();cx.translate(fx-12*dp,fy+fh/2+20*dp);cx.rotate(-Math.PI/2);cx.fillText(`${Math.round(ROOM.d)} cm`,0,0);cx.restore();
+ cx.fillStyle=white?'rgba(0,0,0,.55)':'rgba(255,255,255,.55)';cx.fillRect(fx+8*dp,fy+8*dp,150*dp,22*dp);cx.fillStyle=white?'#fff':'#000';cx.font=`bold ${11*dp}px system-ui`;cx.fillText('✥ Floor · drag to move',fx+14*dp,fy+23*dp);
  for(const i of drawOrder()){const a=A[i],on=SEL.has(a.id),w=a.w*s,h=a.d*s;cx.save();cx.translate(ox+a.x*s,oy+a.y*s);cx.rotate(a.rot*Math.PI/180);
   cx.fillStyle=a.color.replace('hsl(','hsla(').replace(')',',0.45)');cx.fillRect(-w/2,-h/2,w,h);cx.strokeStyle=a.color;cx.lineWidth=(on?3:1.5)*dp;cx.strokeRect(-w/2,-h/2,w,h);
   cx.fillStyle='#fff';cx.font=`${Math.max(10,Math.min(14,w/8/dp))*dp}px system-ui`;cx.textAlign='center';cx.fillText(a.label,0,-2*dp);cx.fillStyle='#cfd4dc';cx.font=`${10*dp}px system-ui`;cx.fillText(`${Math.round(a.w)}×${Math.round(a.d)}`,0,11*dp);
@@ -250,23 +263,31 @@ function draw2(){if(view!=='2')return;cx.fillStyle='#14161a';cx.fillRect(0,0,c2.
  const a=cur();if(a){const pw=230*dp,ph=96*dp,px=c2.width-pw-10*dp,py=10*dp;cx.fillStyle='rgba(29,32,38,.94)';cx.fillRect(px,py,pw,ph);cx.strokeStyle=a.color;cx.lineWidth=2;cx.strokeRect(px,py,pw,ph);const t=document.createElement('canvas');t.width=t.height=80;thumb(t,a.view);cx.drawImage(t,px+8*dp,py+8*dp,80*dp,80*dp);
   cx.fillStyle='#fff';cx.textAlign='left';cx.font=`bold ${13*dp}px system-ui`;cx.fillText(a.label.slice(0,16),px+96*dp,py+24*dp);cx.fillStyle='#cfd4dc';cx.font=`${11*dp}px system-ui`;cx.fillText(`W ${Math.round(a.w)}  D ${Math.round(a.d)}  H ${Math.round(a.h)} cm`,px+96*dp,py+44*dp);cx.fillText(`covers ${(a.w*a.d/1e4).toFixed(2)} m²`,px+96*dp,py+62*dp);cx.fillText(`${(100*a.w*a.d/(ROOM.w*ROOM.d)).toFixed(1)}% of room`,px+96*dp,py+80*dp)}}
 function pick2(mx,my){const s=S(),[ox,oy]=O();const ord=drawOrder().reverse();for(const i of ord){const a=A[i];const dx=mx-(ox+a.x*s),dy=my-(oy+a.y*s),r=-a.rot*Math.PI/180,lx=dx*Math.cos(r)-dy*Math.sin(r),ly=dx*Math.sin(r)+dy*Math.cos(r);if(Math.abs(lx)<a.w*s/2&&Math.abs(ly)<a.d*s/2)return a}return null}
-let drag=null;const P=e=>{const r=c2.getBoundingClientRect();return[(e.clientX-r.left)*devicePixelRatio,(e.clientY-r.top)*devicePixelRatio]};
+let drag=null;
+function hitWall(x,y,s,ox,oy){const dp=devicePixelRatio,fx=ox+ROOM.x0*s,fy=oy+ROOM.y0*s,fw=ROOM.w*s,fh=ROOM.d*s,t=9*dp;
+ if(x>=fx+8*dp&&x<=fx+158*dp&&y>=fy+8*dp&&y<=fy+30*dp)return 'floor';
+ if(Math.abs(y-fy)<t&&x>=fx-t&&x<=fx+fw+t)return 'back';if(Math.abs(y-(fy+fh))<t&&x>=fx-t&&x<=fx+fw+t)return 'front';
+ if(Math.abs(x-fx)<t&&y>=fy-t&&y<=fy+fh+t)return 'left';if(Math.abs(x-(fx+fw))<t&&y>=fy-t&&y<=fy+fh+t)return 'right';return null}
+const P=e=>{const r=c2.getBoundingClientRect();return[(e.clientX-r.left)*devicePixelRatio,(e.clientY-r.top)*devicePixelRatio]};
 c2.onpointerdown=e=>{const[x,y]=P(e),s=S(),[ox,oy]=O(),dp=devicePixelRatio;const a=cur();
  if(a&&a.include&&SEL.size===1){const dx=x-(ox+a.x*s),dy=y-(oy+a.y*s),r=-a.rot*Math.PI/180,lx=dx*Math.cos(r)-dy*Math.sin(r),ly=dx*Math.sin(r)+dy*Math.cos(r);
   if(Math.abs(lx-a.w*s/2)<12*dp&&Math.abs(ly-a.d*s/2)<12*dp){pushUndo();drag={mode:'resize',a};c2.setPointerCapture(e.pointerId);return}
   if(Math.abs(lx+a.w*s/2)<12*dp&&Math.abs(ly+a.d*s/2)<12*dp){pushUndo();drag={mode:'rotate',a,off:Math.atan2(dy,dx)*180/Math.PI-a.rot};c2.setPointerCapture(e.pointerId);return}}
  const h=pick2(x,y),add=e.shiftKey||e.ctrlKey||e.metaKey;
+ if(!h){const wl=hitWall(x,y,s,ox,oy);if(wl){pushUndo();if(wl==='floor'){drag={mode:'floor',x,y,x0:ROOM.x0,y0:ROOM.y0};}else{drag={mode:'wall',side:wl,r0:{...ROOM}};selectStruct(wl)}c2.setPointerCapture(e.pointerId);return}}
  if(h){if(add){if(SEL.has(h.id)){SEL.delete(h.id);sel=SEL.size?A.findIndex(q=>q.id===[...SEL].pop()):null}else{SEL.add(h.id);sel=A.indexOf(h)}}else if(!SEL.has(h.id)){SEL.clear();SEL.add(h.id);sel=A.indexOf(h)}else sel=A.indexOf(h);
   pushUndo();drag={mode:'move',x,y,start:selected().map(q=>({q,x:q.x,y:q.y}))};c2.setPointerCapture(e.pointerId)}
  else{if(!add){SEL.clear();sel=null}marq={x0:x,y0:y,x1:x,y1:y,add};drag={mode:'marq'};c2.setPointerCapture(e.pointerId)}
  renderGallery();inspector();draw2();renderLayers()};
 c2.onpointermove=e=>{if(!drag)return;const[x,y]=P(e),s=S(),[ox,oy]=O();
- if(drag.mode==='move'){for(const t of drag.start){t.q.x=Math.max(0,Math.min(ROOM.w,t.x+(x-drag.x)/s));t.q.y=Math.max(0,Math.min(ROOM.d,t.y+(y-drag.y)/s));sync3(t.q)}}
+ if(drag.mode==='move'){for(const t of drag.start){t.q.x=Math.max(ROOM.x0,Math.min(ROOM.x0+ROOM.w,t.x+(x-drag.x)/s));t.q.y=Math.max(ROOM.y0,Math.min(ROOM.y0+ROOM.d,t.y+(y-drag.y)/s));sync3(t.q)}}
+ else if(drag.mode==='floor'){ROOM.x0=Math.round(drag.x0+(x-drag.x)/s);ROOM.y0=Math.round(drag.y0+(y-drag.y)/s);update3()}
+ else if(drag.mode==='wall'){const wx=(x-ox)/s,wy=(y-oy)/s,r0=drag.r0;if(drag.side==='back'){const b=r0.y0+r0.d;ROOM.y0=Math.round(Math.min(wy,b-100));ROOM.d=b-ROOM.y0}else if(drag.side==='front'){ROOM.d=Math.round(Math.max(100,wy-ROOM.y0))}else if(drag.side==='left'){const rt=r0.x0+r0.w;ROOM.x0=Math.round(Math.min(wx,rt-100));ROOM.w=rt-ROOM.x0}else{ROOM.w=Math.round(Math.max(100,wx-ROOM.x0))}syncRoom();update3()}
  else if(drag.mode==='resize'){const a=drag.a,dx=x-(ox+a.x*s),dy=y-(oy+a.y*s),r=-a.rot*Math.PI/180,lx=dx*Math.cos(r)-dy*Math.sin(r),ly=dx*Math.sin(r)+dy*Math.cos(r);a.w=Math.max(10,2*Math.abs(lx)/s);a.d=Math.max(10,2*Math.abs(ly)/s);sync3(a)}
  else if(drag.mode==='rotate'){const a=drag.a,dx=x-(ox+a.x*s),dy=y-(oy+a.y*s);let r=Math.atan2(dy,dx)*180/Math.PI-drag.off;if(e.shiftKey)r=Math.round(r/15)*15;a.rot=Math.round(((r+180)%360+360)%360-180);sync3(a)}
  else if(drag.mode==='marq'){marq.x1=x;marq.y1=y;const[x0,x1]=[Math.min(marq.x0,x),Math.max(marq.x0,x)],[y0,y1]=[Math.min(marq.y0,y),Math.max(marq.y0,y)];if(!marq.add)SEL.clear();for(const a of A){if(!a.include)continue;const px=ox+a.x*s,py=oy+a.y*s;if(px>=x0&&px<=x1&&py>=y0&&py<=y1)SEL.add(a.id)}sel=SEL.size?A.findIndex(q=>q.id===[...SEL].pop()):null}
  inspector();draw2()};
-c2.onpointerup=()=>{if(drag&&drag.mode==='marq'){marq=null;renderGallery();renderLayers()}drag=null;draw2();renderLayers()};
+c2.onpointerup=()=>{if(drag&&drag.mode==='marq'){marq=null;renderGallery();renderLayers()}if(drag&&drag.mode==='wall'){renderAll()}drag=null;draw2();renderLayers()};
 let wheelT=0;c2.onwheel=e=>{e.preventDefault();const t=selected();if(!t.length)return;if(Date.now()-wheelT>600)pushUndo();wheelT=Date.now();for(const a of t){if(e.shiftKey)a.rot+=e.deltaY>0?5:-5;else{const f=e.deltaY>0?.95:1.05;a.w*=f;a.d*=f;a.h*=f}sync3(a)}inspector();draw2()};
 addEventListener('keydown',e=>{const typing=['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&document.activeElement.type!=='checkbox';
  if((e.ctrlKey||e.metaKey)&&!typing){const k=e.key.toLowerCase();if(k==='z'&&!e.shiftKey){e.preventDefault();undo();return}if(k==='y'||(k==='z'&&e.shiftKey)){e.preventDefault();redo();return}if(k==='a'&&view==='2'){e.preventDefault();A.forEach(a=>a.include&&SEL.add(a.id));renderAll();return}}
@@ -321,8 +342,52 @@ const dmUp=e=>{if(!dmDrag)return;const d=dmDrag;dmDrag=null;
 addEventListener('pointermove',dmMove);addEventListener('pointerup',dmUp);
 $('dm').ondblclick=e=>{if(!DM)return;const[x,y]=dmP(e),h=dmHit(x,y);if(h){pick(h.id,false);$('iname').focus();$('iname').select()}};
 
+
+/* ---------------- room structure: floor, walls, ceiling ---------------- */
+const SLOTS=['floor','ceiling','back','left','right','front'],SNAME={floor:'Floor',ceiling:'Ceiling',back:'Back wall',left:'Left wall',right:'Right wall',front:'Front wall'};
+const STR={};SLOTS.forEach(k=>{STR[k]={slot:k,kind:k==='floor'?'floor':k==='ceiling'?'ceiling':'wall',has:false,show:k!=='ceiling',cut:null,origBlob:null,blob:null,view:null,refined:false,status:'',context:'',openings:[]}});
+let selO=-1;
+const curS=()=>selS?STR[selS]:null;
+function selectStruct(slot){selS=slot;SEL.clear();sel=null;selO=-1;renderAll()}
+function fillStruct(it,cut,origBlob){it.has=true;it.cut=cut;it.origBlob=origBlob;it.blob=origBlob;it.view=cut;it.refined=false;it.status=''}
+$('sdetect').onclick=async()=>{if(!photoFile)return;$('sdetect').disabled=true;try{
+ if(!photoName)photoName=await upload(photoFile,'room_'+Date.now()+'.png');const photo=photoImg||await loadImg(photoFile);const labels=$('sprompt').value.split(',').map(x=>x.trim()).filter(Boolean);log(`detecting structure: ${labels.join(', ')}…`);
+ const res=await Promise.all(labels.map((raw,k)=>detectLabel(photoName,raw,100+k).catch(e=>{log('  '+raw+': '+String(e.message).slice(0,160));return{boxes:[],masks:[]}})));
+ const wallSlots=['back','left','right','front'];let wn=0;
+ for(const [k,r] of res.entries()){const lab=labels[k].split(':')[0].trim().toLowerCase();const c=Math.min(r.boxes.length,r.masks.length);log(`  ${lab}: ${c} found`);
+  for(let i=0;i<c;i++){let slot=null;if(lab.includes('floor'))slot='floor';else if(lab.includes('ceil')||lab.includes('roof'))slot='ceiling';else if(lab.includes('wall'))slot=wallSlots[wn++];if(!slot)continue;
+   const b=r.boxes[i],mi=await loadImg(await getFile(r.masks[i])),{cut,sq}=makeCut(photo,mi,b),ob=await new Promise(res=>sq.toBlob(res,'image/png'));fillStruct(STR[slot],cut,ob);if(slot==='ceiling')STR[slot].show=true}}
+ log('structure ready: walls/floor use the photo as their texture; refine to flatten them');renderAll()}catch(e){log('ERROR structure '+String(e&&e.message||e))}finally{$('sdetect').disabled=!photoFile}};
+const STR_PROMPT={wall:'This is a crop of one wall of a room; grey areas were hidden behind furniture. Redraw it as a flat, straight-on, clean wall surface that fills the whole image. Keep posters, frames, string lights and other things mounted on the wall exactly as decoration on the wall. Remove furniture and objects standing in front of the wall and continue the wall surface over the grey areas. Keep windows where they are.',floor:'This is a crop of the floor of a room; grey areas were hidden by furniture. Redraw it as a flat, straight top-down view of the bare floor surface filling the whole image. Remove furniture, rugs and objects and continue the floor pattern over the grey areas.',ceiling:'This is a crop of a room ceiling. Redraw it as a flat, straight view of the bare ceiling surface filling the whole image, removing any objects and continuing the surface.'};
+async function refineStruct(it){if(!it.has)return;it.status='refining';renderAll();try{const name=await upload(it.origBlob,`str_${it.slot}_${Date.now()}.png`);const prompt=STR_PROMPT[it.kind]+(it.context?' '+it.context:'');
+ const id=await submit(qwenGraph(name,null,prompt,Math.floor(Math.random()*1e9)));await wait(id,it.slot);const o=await outputs(id);const f=files(o.sv||o)[0];if(!f)throw new Error('no image returned');
+ it.blob=await getFile(f);it.view=await loadImg(it.blob);it.refined=true;it.status='refined';log(SNAME[it.slot]+': refined')}catch(e){it.status='err';log('ERROR refine '+SNAME[it.slot]+': '+String(e&&e.message||e).slice(0,200))}renderAll()}
+$('srefAll').onclick=async()=>{$('srefAll').disabled=true;await Promise.all(SLOTS.map(k=>STR[k]).filter(x=>x.has&&x.show).map(refineStruct));updStructBtns()};
+function updStructBtns(){$('sdetect').disabled=!photoFile;$('srefAll').disabled=!SLOTS.some(k=>STR[k].has&&STR[k].show)}
+// inspector
+function structInsp(){const it=curS();if(!it)return;$('stitle').textContent=SNAME[it.slot]+(it.has?'':' (no texture yet: run Detect structure)');$('sctx').value=it.context;$('sshow').checked=it.show;
+ const isW=it.kind==='wall';$('orow').style.display=isW?'flex':'none';const as=$('sassign');as.style.display=isW?'inline-block':'none';as.innerHTML=isW?'<option value="">Swap with…</option>'+['back','left','right','front'].filter(k=>k!==it.slot).map(k=>`<option value="${k}">${SNAME[k]}</option>`).join(''):'';
+ $('sprevhint').textContent=isW?'Drag a rectangle to place a window/door opening; the white corner resizes it. Openings are hollowed out of the wall in 3D.':'';drawSprev()}
+function drawSprev(){const c=$('sprev'),it=curS();if(!c||!it)return;const x=c.getContext('2d');x.fillStyle='#0e1013';x.fillRect(0,0,520,520);if(it.view){x.drawImage(it.view,0,0,520,520)}else{x.fillStyle='#8b93a1';x.font='14px system-ui';x.textAlign='center';x.fillText('no texture yet',260,260)}
+ if(it.kind==='wall')it.openings.forEach((o,i)=>{const X=o.u*520,Y=o.v*520,Wd=o.w*520,Ht=o.h*520;x.fillStyle='rgba(116,192,252,.33)';x.fillRect(X,Y,Wd,Ht);x.strokeStyle=i===selO?'#fff':'#74c0fc';x.lineWidth=i===selO?3:2;x.strokeRect(X,Y,Wd,Ht);x.fillStyle='#fff';x.font='bold 13px system-ui';x.textAlign='left';x.fillText(o.kind,X+5,Y+16);if(i===selO){x.fillRect(X+Wd-7,Y+Ht-7,14,14)}})}
+const spP=e=>{const r=$('sprev').getBoundingClientRect();return[(e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height]};let spD=null;
+$('sprev').onpointerdown=e=>{const it=curS();if(!it||it.kind!=='wall')return;const[u,v]=spP(e);const o=it.openings[selO];if(o&&Math.abs(u-(o.u+o.w))<.03&&Math.abs(v-(o.v+o.h))<.03){spD={m:'rs'};$('sprev').setPointerCapture(e.pointerId);return}
+ let hit=-1;it.openings.forEach((q,i)=>{if(u>=q.u&&u<=q.u+q.w&&v>=q.v&&v<=q.v+q.h)hit=i});if(hit>=0){selO=hit;const q=it.openings[hit];spD={m:'mv',du:u-q.u,dv:v-q.v};$('sprev').setPointerCapture(e.pointerId)}
+ else{const n={kind:'window',u,v,w:.01,h:.01};it.openings.push(n);selO=it.openings.length-1;spD={m:'new',u0:u,v0:v}; $('sprev').setPointerCapture(e.pointerId)}drawSprev()};
+$('sprev').onpointermove=e=>{if(!spD)return;const it=curS();const o=it&&it.openings[selO];if(!o)return;const[u,v]=spP(e);
+ if(spD.m==='mv'){o.u=Math.max(0,Math.min(1-o.w,u-spD.du));o.v=Math.max(0,Math.min(1-o.h,v-spD.dv))}else if(spD.m==='rs'){o.w=Math.max(.04,Math.min(1-o.u,u-o.u));o.h=Math.max(.04,Math.min(1-o.v,v-o.v))}
+ else if(spD.m==='new'){o.u=Math.max(0,Math.min(u,spD.u0));o.v=Math.max(0,Math.min(v,spD.v0));o.w=Math.abs(u-spD.u0);o.h=Math.abs(v-spD.v0)}drawSprev()};
+$('sprev').onpointerup=()=>{if(!spD)return;const it=curS();if(spD.m==='new'&&it){const o=it.openings[selO];if(o&&(o.w<.04||o.h<.04)){it.openings.splice(selO,1);selO=-1}}spD=null;drawSprev();update3()};
+const addOpen=k=>{const it=curS();if(!it||it.kind!=='wall')return;it.openings.push(k==='door'?{kind:'door',u:.4,v:.4,w:.2,h:.6}:{kind:'window',u:.35,v:.2,w:.3,h:.35});selO=it.openings.length-1;drawSprev();update3()};
+$('oadd').onclick=()=>addOpen('window');$('oaddD').onclick=()=>addOpen('door');$('odel').onclick=()=>{const it=curS();if(!it||selO<0)return;it.openings.splice(selO,1);selO=-1;drawSprev();update3()};
+$('sctx').oninput=e=>{const it=curS();if(it)it.context=e.target.value};
+$('sshow').onchange=e=>{const it=curS();if(it){it.show=e.target.checked;renderAll()}};
+$('sref').onclick=()=>{const it=curS();if(it)refineStruct(it)};
+$('srev').onclick=()=>{const it=curS();if(it&&it.has){it.blob=it.origBlob;it.view=it.cut;it.refined=false;it.status='';renderAll()}};
+$('sassign').onchange=e=>{const to=e.target.value,it=curS();if(!to||!it)return;const o=STR[to],keys=['has','show','cut','origBlob','blob','view','refined','status','context','openings','_tx','_tk'];for(const k of keys){const t=it[k];it[k]=o[k];o[k]=t}selS=to;selO=-1;renderAll()};
+
 /* ---------------- save / load layouts ---------------- */
-const layoutJSON=()=>({units:'cm',room_cm:[ROOM.w,ROOM.d],sizes:'estimated from typical sizes per category; edit if known',axes:'x right, y down (top-down), rot deg',input_photo:{file:photoFile?.name||null,source_licence:$('lic').value||'UNRECORDED'},
+const layoutJSON=()=>({units:'cm',room_cm:[ROOM.w,ROOM.d],sizes:'estimated from typical sizes per category; edit if known',axes:'x right, y down (top-down), rot deg',structure:{floor_rect_cm:[Math.round(ROOM.x0),Math.round(ROOM.y0),Math.round(ROOM.w),Math.round(ROOM.d)],wall_height_cm:ROOM.h,floor_colour_topdown:ROOM.fcol,floor:{show:STR.floor.show,refined:STR.floor.refined},ceiling:{show:STR.ceiling.show,refined:STR.ceiling.refined},walls:Object.fromEntries(['back','left','right','front'].map(k=>{const it=STR[k],L=(k==='back'||k==='front')?ROOM.w:ROOM.d;return[k,{show:it.show,refined:it.refined,length_cm:Math.round(L),openings:it.openings.map(o=>({kind:o.kind,uv:[+o.u.toFixed(3),+o.v.toFixed(3),+o.w.toFixed(3),+o.h.toFixed(3)],along_wall_cm:+(o.u*L).toFixed(1),from_floor_cm:+((1-o.v-o.h)*ROOM.h).toFixed(1),width_cm:+(o.w*L).toFixed(1),height_cm:+(o.h*ROOM.h).toFixed(1)}))}]}))},input_photo:{file:photoFile?.name||null,source_licence:$('lic').value||'UNRECORDED'},
  pipeline:{segmentation:'SAM 3.1 (SAM License)',refine:'Qwen-Image-Edit 2511 + Lightning LoRA (open weights)',mesh:'TRELLIS.2 (check weights licence)',runtime:'ComfyUI Cloud',generated:true},
  assets:A.filter(a=>a.include).map(a=>({id:a.id,label:a.label,context:a.context,colour_id:a.color,refined:a.refined,position_cm:[+a.x.toFixed(1),+a.y.toFixed(1)],size_cm:[+a.w.toFixed(1),+a.d.toFixed(1),+a.h.toFixed(1)],rotation_deg:a.rot,lift_cm:+(a.lift||0).toFixed(1),layer:a.z||0,on_top_of:(parentOf(a)||{}).label||null,mesh:a.glbName||null}))});
 function applyLayout(j){pushUndo();if(j.room_cm){ROOM.w=j.room_cm[0];ROOM.d=j.room_cm[1];syncRoom()}(j.assets||[]).forEach(m=>{const a=byId(m.id);if(a){a.include=true;a.x=m.position_cm[0];a.y=m.position_cm[1];if(m.size_cm)[a.w,a.d,a.h]=m.size_cm;a.rot=m.rotation_deg||0;a.z=m.layer||0;a.label=m.label||a.label}});renderAll();update3()}
@@ -340,8 +405,8 @@ let tc=null,gmode='translate';
 window.__gz=()=>({att:!!(tc&&tc.object),mode:gmode,room:[ROOM.w,ROOM.d]});function initGizmo(){tc=new TransformControls(cam,R.domElement);tc.setSize(0.9);scn.add(tc);
  tc.addEventListener('dragging-changed',e=>{ctl.enabled=!e.value;if(e.value){pushUndo();dragGz=true}else{dragGz=false;commitScale()}});
  tc.addEventListener('objectChange',()=>{const o=tc.object;if(!o)return;const a=o.userData.a;if(!a)return;
-  if(gmode==='translate'){a.x=Math.max(0,Math.min(ROOM.w,o.position.x*100+ROOM.w/2));a.y=Math.max(0,Math.min(ROOM.d,o.position.z*100+ROOM.d/2));a.lift=Math.max(-elev(a),o.position.y*100-elev(a));
-   const lim=[(a.x-ROOM.w/2)/100,(elev(a)+a.lift)/100,(a.y-ROOM.d/2)/100];o.position.set(lim[0],lim[1],lim[2])}
+  if(gmode==='translate'){a.x=Math.max(ROOM.x0,Math.min(ROOM.x0+ROOM.w,o.position.x*100+CX()));a.y=Math.max(ROOM.y0,Math.min(ROOM.y0+ROOM.d,o.position.z*100+CY()));a.lift=Math.max(-elev(a),o.position.y*100-elev(a));
+   const lim=[(a.x-CX())/100,(elev(a)+a.lift)/100,(a.y-CY())/100];o.position.set(lim[0],lim[1],lim[2])}
   else if(gmode==='rotate'){let r=-o.rotation.y*180/Math.PI;a.rot=Math.round(((r+180)%360+360)%360-180)}
   inspector();draw2();renderLayers()});
  applySnap()}
@@ -365,8 +430,19 @@ function init3(){const m=$('c3');R=new THREE.WebGLRenderer({antialias:true});R.s
  initGizmo();scn.add(new THREE.HemisphereLight(0xffffff,0x334,1.1));const d=new THREE.DirectionalLight(0xffffff,2.2);d.position.set(3,6,2);d.castShadow=true;d.shadow.mapSize.set(2048,2048);Object.assign(d.shadow.camera,{left:-8,right:8,top:8,bottom:-8});scn.add(d);
  R.domElement.addEventListener('pointerdown',down3);R.domElement.addEventListener('pointermove',move3);addEventListener('pointerup',()=>{d3=null;ctl.enabled=true});
  (function loop(){requestAnimationFrame(loop);if(view==='2'||view==='3'){try{ctl.update();R.render(scn,cam)}catch(err){if(!window.__rerr){window.__rerr=1;log('3D render error: '+err.message+' (press Reset view)')}}}})();update3()}
-function update3(){if(!R)return;if(floor){scn.remove(floor);scn.remove(grid)}const W=ROOM.w/100,D=ROOM.d/100;floor=new THREE.Mesh(new THREE.PlaneGeometry(W,D),new THREE.MeshStandardMaterial({color:0x2a2e36,roughness:.9}));floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scn.add(floor);grid=new THREE.GridHelper(Math.max(W,D),Math.round(Math.max(W,D)*2),0x4a5160,0x30353d);scn.add(grid);for(const [id,o] of [...objs]){if(!byId(id)){if(tc&&tc.object===o)tc.detach();scn.remove(o);objs.delete(id)}}A.forEach(sync3);updGizmo()}
-const wpos=a=>[(a.x-ROOM.w/2)/100,(a.y-ROOM.d/2)/100];
+let roomG=null;
+function itemTex(it){if(!it||!it.has||!it.view)return null;if(it._tk===it.view&&it._tx)return it._tx;const c=document.createElement('canvas');c.width=c.height=512;const x=c.getContext('2d');x.fillStyle='#808080';x.fillRect(0,0,512,512);x.drawImage(it.view,0,0,512,512);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;it._tx=t;it._tk=it.view;return t}
+function buildRoom3(){if(roomG){scn.remove(roomG);roomG.traverse(o=>{if(o.geometry)o.geometry.dispose()})}roomG=new THREE.Group();scn.add(roomG);const W=ROOM.w/100,D=ROOM.d/100,H=ROOM.h/100;
+ const ft=STR.floor.show?itemTex(STR.floor):null,fm=new THREE.Mesh(new THREE.PlaneGeometry(W,D),new THREE.MeshStandardMaterial(ft?{map:ft,roughness:.9}:{color:0x2a2e36,roughness:.9}));fm.rotation.x=-Math.PI/2;fm.receiveShadow=true;roomG.add(fm);
+ const gr=new THREE.GridHelper(Math.max(W,D),Math.round(Math.max(W,D)*2),0x4a5160,0x30353d);gr.position.y=.002;gr.material.transparent=true;gr.material.opacity=ft?.18:1;roomG.add(gr);
+ for(const side of ['back','left','right','front']){const it=STR[side];if(!it.show)continue;const L=(side==='back'||side==='front')?W:D;const sh=new THREE.Shape();sh.moveTo(-L/2,0);sh.lineTo(L/2,0);sh.lineTo(L/2,H);sh.lineTo(-L/2,H);sh.closePath();
+  for(const o of it.openings){const e=.01,u0=Math.max(e,o.u),u1=Math.min(1-e,o.u+o.w),v0=Math.max(e,o.v),v1=Math.min(1-e,o.v+o.h);if(u1<=u0||v1<=v0)continue;const x0=-L/2+u0*L,x1=-L/2+u1*L,ya=H-v1*H,yb=H-v0*H,hp=new THREE.Path();hp.moveTo(x0,ya);hp.lineTo(x1,ya);hp.lineTo(x1,yb);hp.lineTo(x0,yb);hp.closePath();sh.holes.push(hp)}
+  const g=new THREE.ShapeGeometry(sh),uv=g.attributes.uv,ps=g.attributes.position;for(let i=0;i<ps.count;i++)uv.setXY(i,(ps.getX(i)+L/2)/L,ps.getY(i)/H);uv.needsUpdate=true;
+  const tx=itemTex(it),mm=new THREE.Mesh(g,new THREE.MeshStandardMaterial(tx?{map:tx,roughness:.95,side:THREE.FrontSide}:{color:0x59606b,roughness:.95,side:THREE.FrontSide}));mm.receiveShadow=true;
+  if(side==='back')mm.position.set(0,0,-D/2);else if(side==='front'){mm.position.set(0,0,D/2);mm.rotation.y=Math.PI}else if(side==='left'){mm.position.set(-W/2,0,0);mm.rotation.y=Math.PI/2}else{mm.position.set(W/2,0,0);mm.rotation.y=-Math.PI/2}roomG.add(mm)}
+ if(STR.ceiling.show){const ct=itemTex(STR.ceiling),cm=new THREE.Mesh(new THREE.PlaneGeometry(W,D),new THREE.MeshStandardMaterial(ct?{map:ct,roughness:.95}:{color:0x59606b,roughness:.95}));cm.rotation.x=Math.PI/2;cm.position.y=H;roomG.add(cm)}}
+function update3(){if(!R)return;buildRoom3();for(const [id,o] of [...objs]){if(!byId(id)){if(tc&&tc.object===o)tc.detach();scn.remove(o);objs.delete(id)}}A.forEach(sync3);updGizmo()}
+const wpos=a=>[(a.x-CX())/100,(a.y-CY())/100];
 function sync3(a){if(!R||!a)return;let o=objs.get(a.id);if(o&&(o.userData.glb!==!!a.glb||o.userData.gv!==(a.gv||0))){scn.remove(o);objs.delete(a.id);o=null}
  if(!o){o=new THREE.Group();o.userData={a,glb:!!a.glb,gv:a.gv||0};scn.add(o);objs.set(a.id,o);
   if(a.glb){gl.parse(a.glb.slice(0),'',g=>{const m=g.scene;m.traverse(c=>{if(c.isMesh){c.castShadow=c.receiveShadow=true;c.userData.orig=c.material}});const b=new THREE.Box3().setFromObject(m),sz=b.getSize(new THREE.Vector3()),ct=b.getCenter(new THREE.Vector3());m.position.set(-ct.x,-b.min.y,-ct.z);const inner=new THREE.Group();inner.add(m);inner.userData.size=sz;o.add(inner);o.userData.inner=inner;sync3(a)},e=>log('GLB parse error '+e.message))}
@@ -380,7 +456,7 @@ let d3=null;const pl=new THREE.Plane(new THREE.Vector3(0,1,0),0);
 function setRay(e){const r=R.domElement.getBoundingClientRect();ray.setFromCamera(new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1),cam)}
 function down3(e){if(e.button!==0)return;if(tc&&(tc.axis||tc.dragging))return;setRay(e);const hit=ray.intersectObjects([...objs.values()].filter(o=>o.visible),true)[0];if(!hit)return;let o=hit.object;while(o&&!o.userData.a)o=o.parent;if(!o)return;const a=o.userData.a;
  if(e.shiftKey||e.ctrlKey){pick(a.id,true);return}if(!SEL.has(a.id)){SEL.clear();SEL.add(a.id)}sel=A.indexOf(a);if(view==='3'){renderGallery();inspector();renderLayers();return}pushUndo();ctl.enabled=false;const p=new THREE.Vector3();ray.ray.intersectPlane(pl,p);d3={o,dx:o.position.x-p.x,dz:o.position.z-p.z};renderGallery();inspector();renderLayers();draw2()}
-function move3(e){if(!d3)return;setRay(e);const p=new THREE.Vector3();if(!ray.ray.intersectPlane(pl,p))return;const a=d3.o.userData.a;a.x=Math.max(0,Math.min(ROOM.w,(p.x+d3.dx)*100+ROOM.w/2));a.y=Math.max(0,Math.min(ROOM.d,(p.z+d3.dz)*100+ROOM.d/2));sync3(a);inspector();draw2()}
+function move3(e){if(!d3)return;setRay(e);const p=new THREE.Vector3();if(!ray.ray.intersectPlane(pl,p))return;const a=d3.o.userData.a;a.x=Math.max(ROOM.x0,Math.min(ROOM.x0+ROOM.w,(p.x+d3.dx)*100+CX()));a.y=Math.max(ROOM.y0,Math.min(ROOM.y0+ROOM.d,(p.z+d3.dz)*100+CY()));sync3(a);inspector();draw2()}
 const HINT={3:'Final look: click an object, edit its prompt or reference image on the right, press Refine + regenerate mesh. Each asset keeps its last 5 versions; click a thumbnail to go back. Drag = orbit, right-drag = pan, wheel = zoom.',1:'Detected objects: click to select, shift-click (range) or ctrl-click (toggle) for several. Untick "keep" to drop an object. Refine until each 2D image is one clean, complete object, then confirm.',2:'Top-down (left): drag blocks · shift-click / drag-select · white corner = resize · yellow corner = rotate (shift = 15° steps) · Ctrl+Z / Ctrl+Y.   3D (right): click an object, then use the gizmo: G move (X/Y/Z arrows), R rotate, S scale · snap + step sizes in the toolbar · drag empty space = orbit · right-drag = pan · wheel = zoom.'};
 function show(v){if(v==='2'&&!confirmed)return;if(v==='3'&&$('t3').disabled)return;view=v;$('lay').classList.toggle('v3',v==='3');$('t3').classList.toggle('on',v==='3');$('t1w').style.display=v==='1'?'flex':'none';$('gal').style.display=v==='1'?'grid':'none';$('galbar').style.display=v==='1'?'flex':'none';$('lay').style.display=(v==='2'||v==='3')?'flex':'none';$('t1').classList.toggle('on',v==='1');$('t2').classList.toggle('on',v==='2');$('hint').textContent=HINT[v];
  if(v==='2'||v==='3'){if(!R)init3();else update3()}requestAnimationFrame(()=>{fit();renderAll()})}

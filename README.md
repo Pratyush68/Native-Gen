@@ -8,7 +8,8 @@ Built for the Comfy Org Open Source Higgsfield challenge (Most Innovative, Open 
 2. **Refine 2D**: Qwen-Image-Edit 2511 (+ Lightning LoRA) redraws each cutout as one clean, complete object. Optional context text and reference image.
 3. **Confirm assets**, then **Layout**: top-down editor (multi-select, marquee, rotate/resize handles, undo/redo, layers/stacking, room size) beside a live 3D view.
 4. **Generate meshes**: TRELLIS.2 builds a GLB per asset, placed per the saved layout.
-5. Export `layout.json` (positions, sizes, rotations, provenance) for Unreal/Blender.
+5. **Room structure** (optional): SAM detects floor, walls and ceiling; each becomes a textured plane that Qwen can flatten. Draw window/door openings on a wall and they are hollowed out in 3D (curtains and posters stay as objects or wall texture). In the top-down view the walls are draggable lines and the floor is a movable block.
+6. Export `layout.json` (positions, sizes, rotations, provenance) for Unreal/Blender.
 
 ## Run
 Requires Python 3 and a ComfyUI Cloud account with API access.
