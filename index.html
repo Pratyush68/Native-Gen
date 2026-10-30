@@ -54,7 +54,7 @@ main{flex:1;position:relative;min-width:0;display:flex;flex-direction:column}
 <button id="bundo">↶ Undo</button><button id="bredo">↷ Redo</button>
 <select id="rpre" title="room size"><option value="">Room size…</option><option>300x300</option><option>400x300</option><option>400x400</option><option>500x400</option><option>500x500</option><option>600x500</option><option>800x600</option></select>
 <input id="rw" type="number" title="room width cm"> × <input id="rd" type="number" title="room depth cm"> <span class="st">cm (estimated)</span>
-<button id="auto">Auto-layout from photo</button><button id="sUp">All ×1.1</button><button id="sDn">All ×0.9</button><button id="mid">Colour ID</button>
+<button id="auto">Auto-layout from photo</button><button id="sUp">All ×1.1</button><button id="sDn">All ×0.9</button><button id="mid">Colour ID</button><span id="gz" style="display:inline-flex;gap:4px;align-items:center;border-left:1px solid var(--line);padding-left:8px"><button id="gMove" class="on" title="Move (G)">Move G</button><button id="gRot" title="Rotate (R)">Rotate R</button><button id="gScale" title="Scale (S)">Scale S</button><label class="st" style="display:flex;gap:3px;align-items:center"><input id="gSnap" type="checkbox" checked style="width:auto"> snap</label><select id="gStep" title="move step" style="width:auto"><option value="1">1 cm</option><option value="5">5 cm</option><option value="10" selected>10 cm</option><option value="25">25 cm</option><option value="50">50 cm</option></select><select id="gRstep" title="rotation step" style="width:auto"><option value="5">5°</option><option value="15" selected>15°</option><option value="45">45°</option><option value="90">90°</option></select><select id="gSstep" title="scale step" style="width:auto"><option value="0.05">×0.05</option><option value="0.1" selected>×0.1</option><option value="0.25">×0.25</option></select></span>
 <input id="lname" type="text" placeholder="layout name"><button id="lsave">Save layout</button><select id="lload"><option value="">Load saved…</option></select><label class="b">Open file<input id="fj" type="file" accept=".json" hidden></label><button id="mex">Export .json</button>
 <button id="gen" class="go">Confirm layout &amp; generate all meshes</button>
 </div>
@@ -81,6 +81,7 @@ main{flex:1;position:relative;min-width:0;display:flex;flex-direction:column}
 import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {TransformControls} from 'three/addons/controls/TransformControls.js';
 const $=id=>document.getElementById(id);
 const log=m=>{const l=$('log');l.textContent+=m+'\n';l.scrollTop=l.scrollHeight};
 let A=[],SEL=new Set(),sel=null,idMode=false,photoFile=null,photoImg=null,view='1',confirmed=false;const ROOM={w:400,d:300};
@@ -109,7 +110,7 @@ fetch('/api/user').then(r=>{$('conn').textContent=r.ok?'cloud connected':'proxy 
 
 /* ---------------- undo / redo (layout state) ---------------- */
 const U=[],RE=[];
-const snap=()=>JSON.stringify({room:{...ROOM},a:A.map(a=>({id:a.id,x:a.x,y:a.y,w:a.w,d:a.d,h:a.h,rot:a.rot,include:a.include,label:a.label,z:a.z||0}))});
+const snap=()=>JSON.stringify({room:{...ROOM},a:A.map(a=>({id:a.id,x:a.x,y:a.y,w:a.w,d:a.d,h:a.h,rot:a.rot,include:a.include,label:a.label,z:a.z||0,lift:a.lift||0}))});
 function pushUndo(){const s=snap();if(U[U.length-1]!==s){U.push(s);if(U.length>150)U.shift()}RE.length=0;updUndo()}
 function restore(s){const j=JSON.parse(s);ROOM.w=j.room.w;ROOM.d=j.room.d;j.a.forEach(r=>{const a=byId(r.id);if(a)Object.assign(a,r)});syncRoom();renderAll();update3()}
 function undo(){if(!U.length)return;RE.push(snap());restore(U.pop());updUndo()}
@@ -147,7 +148,7 @@ $('detect').onclick=async()=>{$('detect').disabled=true;try{
 function estimateRoom(){const foot=A.reduce((s,a)=>s+(a.base==='rug'?0:a.w*a.d),0);const area=Math.max(foot*2.8,9e4);let W=Math.sqrt(area*1.25);const mx=Math.max(0,...A.map(a=>Math.max(a.w,a.d)));W=Math.max(W,mx*1.4);ROOM.w=Math.round(W/10)*10;ROOM.d=Math.round(Math.max(area/W,mx*1.1)/10)*10;syncRoom()}
 function autoLayout(){A.forEach(a=>{a.x=a.box.cx*ROOM.w;a.y=Math.max(a.d/2,Math.min(ROOM.d-a.d/2,a.box.bot*ROOM.d-a.d/2))})}
 const syncRoom=()=>{$('rw').value=ROOM.w;$('rd').value=ROOM.d};
-$('rw').onchange=e=>{pushUndo();ROOM.w=Math.max(100,+e.target.value);draw2();update3()};$('rd').onchange=e=>{pushUndo();ROOM.d=Math.max(100,+e.target.value);draw2();update3()};
+const setRoom=(k,v)=>{v=+v;if(!(v>=50))return;if(!setRoom.t){pushUndo();setRoom.t=setTimeout(()=>setRoom.t=null,800)}ROOM[k]=Math.round(v);for(const a of A){a.x=Math.min(a.x,ROOM.w);a.y=Math.min(a.y,ROOM.d)}draw2();update3()};$('rw').oninput=e=>setRoom('w',e.target.value);$('rd').oninput=e=>setRoom('d',e.target.value);
 $('rpre').onchange=e=>{if(!e.target.value)return;pushUndo();const[w,d]=e.target.value.split('x').map(Number);ROOM.w=w;ROOM.d=d;syncRoom();e.target.value='';draw2();update3()};
 $('auto').onclick=()=>{pushUndo();estimateRoom();autoLayout();draw2();update3()};
 $('sUp').onclick=()=>{pushUndo();A.forEach(a=>{a.w*=1.1;a.d*=1.1;a.h*=1.1});draw2();inspector();update3()};$('sDn').onclick=()=>{pushUndo();A.forEach(a=>{a.w*=.9;a.d*=.9;a.h*=.9});draw2();inspector();update3()};
@@ -218,7 +219,7 @@ let numUndo=false;
 for(const [id,k] of [['iw','w'],['id','d'],['ih','h'],['ir','rot'],['ix','x'],['iy','y']]){$(id).onfocus=()=>numUndo=false;$(id).oninput=e=>{const a=cur();if(!a)return;if(!numUndo){pushUndo();numUndo=true}a[k]=+e.target.value;$('fp').textContent=`· covers ${(a.w*a.d/1e4).toFixed(2)} m²`;draw2();sync3(a);renderLayers()}}
 
 let bbT=null;for(const [id,k] of [['bx','x'],['by','y'],['bw','w'],['bh','h']]){$(id).oninput=e=>{const a=cur();if(!a||!a.bb||!photoImg)return;const v=+e.target.value;const W=photoImg.width,H=photoImg.height;a.bb[k]=v;a.bb.w=Math.max(12,Math.min(W,a.bb.w));a.bb.h=Math.max(12,Math.min(H,a.bb.h));a.bb.x=Math.max(0,Math.min(W-a.bb.w,a.bb.x));a.bb.y=Math.max(0,Math.min(H-a.bb.h,a.bb.y));a._mb=null;drawDM();clearTimeout(bbT);bbT=setTimeout(()=>recrop(a),700)}}
-function renderAll(){drawDM();renderGallery();inspector();updBtns();draw2();renderLayers();update3();updUndo()}
+function renderAll(){updGizmo();drawDM();renderGallery();inspector();updBtns();draw2();renderLayers();update3();updUndo()}
 
 /* ---------------- top-down layout ---------------- */
 const c2=$('c2'),cx=c2.getContext('2d');
@@ -311,7 +312,7 @@ $('dm').ondblclick=e=>{if(!DM)return;const[x,y]=dmP(e),h=dmHit(x,y);if(h){pick(h
 /* ---------------- save / load layouts ---------------- */
 const layoutJSON=()=>({units:'cm',room_cm:[ROOM.w,ROOM.d],sizes:'estimated from typical sizes per category; edit if known',axes:'x right, y down (top-down), rot deg',input_photo:{file:photoFile?.name||null,source_licence:$('lic').value||'UNRECORDED'},
  pipeline:{segmentation:'SAM 3.1 (SAM License)',refine:'Qwen-Image-Edit 2511 + Lightning LoRA (open weights)',mesh:'TRELLIS.2 (check weights licence)',runtime:'ComfyUI Cloud',generated:true},
- assets:A.filter(a=>a.include).map(a=>({id:a.id,label:a.label,context:a.context,colour_id:a.color,refined:a.refined,position_cm:[+a.x.toFixed(1),+a.y.toFixed(1)],size_cm:[+a.w.toFixed(1),+a.d.toFixed(1),+a.h.toFixed(1)],rotation_deg:a.rot,layer:a.z||0,on_top_of:(parentOf(a)||{}).label||null,mesh:a.glbName||null}))});
+ assets:A.filter(a=>a.include).map(a=>({id:a.id,label:a.label,context:a.context,colour_id:a.color,refined:a.refined,position_cm:[+a.x.toFixed(1),+a.y.toFixed(1)],size_cm:[+a.w.toFixed(1),+a.d.toFixed(1),+a.h.toFixed(1)],rotation_deg:a.rot,lift_cm:+(a.lift||0).toFixed(1),layer:a.z||0,on_top_of:(parentOf(a)||{}).label||null,mesh:a.glbName||null}))});
 function applyLayout(j){pushUndo();if(j.room_cm){ROOM.w=j.room_cm[0];ROOM.d=j.room_cm[1];syncRoom()}(j.assets||[]).forEach(m=>{const a=byId(m.id);if(a){a.include=true;a.x=m.position_cm[0];a.y=m.position_cm[1];if(m.size_cm)[a.w,a.d,a.h]=m.size_cm;a.rot=m.rotation_deg||0;a.z=m.layer||0;a.label=m.label||a.label}});renderAll();update3()}
 const saved=()=>{try{return JSON.parse(localStorage.getItem('rb_layouts')||'{}')}catch{return{}}};
 function refreshSaved(){const s=$('lload');s.innerHTML='<option value="">Load saved…</option>'+Object.keys(saved()).map(k=>`<option>${k}</option>`).join('')}
@@ -321,15 +322,35 @@ const dl=(o,name)=>{const l=document.createElement('a');l.href=URL.createObjectU
 $('mex').onclick=()=>dl(layoutJSON(),'layout.json');
 $('fj').onchange=async e=>applyLayout(JSON.parse(await e.target.files[0].text()));refreshSaved();
 
+
+/* ---------------- gizmo (Blender-style move / rotate / scale with snapping) ---------------- */
+let tc=null,gmode='translate';
+window.__gz=()=>({att:!!(tc&&tc.object),mode:gmode,room:[ROOM.w,ROOM.d]});function initGizmo(){tc=new TransformControls(cam,R.domElement);tc.setSize(0.9);scn.add(tc);
+ tc.addEventListener('dragging-changed',e=>{ctl.enabled=!e.value;if(e.value){pushUndo();dragGz=true}else{dragGz=false;commitScale()}});
+ tc.addEventListener('objectChange',()=>{const o=tc.object;if(!o)return;const a=o.userData.a;if(!a)return;
+  if(gmode==='translate'){a.x=Math.max(0,Math.min(ROOM.w,o.position.x*100+ROOM.w/2));a.y=Math.max(0,Math.min(ROOM.d,o.position.z*100+ROOM.d/2));a.lift=Math.max(-elev(a),o.position.y*100-elev(a));
+   const lim=[(a.x-ROOM.w/2)/100,(elev(a)+a.lift)/100,(a.y-ROOM.d/2)/100];o.position.set(lim[0],lim[1],lim[2])}
+  else if(gmode==='rotate'){let r=-o.rotation.y*180/Math.PI;a.rot=Math.round(((r+180)%360+360)%360-180)}
+  inspector();draw2();renderLayers()});
+ applySnap()}
+let dragGz=false;
+function commitScale(){if(gmode!=='scale'||!tc||!tc.object)return;const o=tc.object,a=o.userData.a;if(!a)return;const sc=o.scale;a.w=Math.max(5,a.w*sc.x);a.h=Math.max(5,a.h*sc.y);a.d=Math.max(5,a.d*sc.z);if(a.glb)a.fit='axis';o.scale.set(1,1,1);sync3(a);inspector();draw2();renderLayers()}
+function applySnap(){if(!tc)return;const on=$('gSnap').checked;tc.setTranslationSnap(on?+$('gStep').value/100:null);tc.setRotationSnap(on?+$('gRstep').value*Math.PI/180:null);tc.setScaleSnap(on?+$('gSstep').value:null)}
+function setGmode(m){gmode=m;if(!tc)return;tc.setMode(m);tc.showX=m!=='rotate';tc.showZ=m!=='rotate';tc.showY=true;for(const [id,mm] of [['gMove','translate'],['gRot','rotate'],['gScale','scale']])$(id).classList.toggle('on',m===mm)}
+function updGizmo(){if(!tc||dragGz)return;const a=cur();const o=a&&a.include&&SEL.size>=1?objs.get(a.id):null;if(o&&o.visible){if(tc.object!==o)tc.attach(o)}else tc.detach()}
+$('gMove').onclick=()=>setGmode('translate');$('gRot').onclick=()=>setGmode('rotate');$('gScale').onclick=()=>setGmode('scale');
+for(const id of ['gSnap','gStep','gRstep','gSstep'])$(id).onchange=applySnap;
+addEventListener('keydown',e=>{if(view!=='2'||e.ctrlKey||e.metaKey||e.altKey)return;if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)&&document.activeElement.type!=='checkbox')return;const k=e.key.toLowerCase();if(k==='g')setGmode('translate');else if(k==='r')setGmode('rotate');else if(k==='s')setGmode('scale')});
+
 /* ---------------- 3D ---------------- */
 let R=null,cam,scn,ctl,floor,grid,objs=new Map(),ray=new THREE.Raycaster(),gl=new GLTFLoader();
 function init3(){const m=$('c3');R=new THREE.WebGLRenderer({antialias:true});R.setPixelRatio(devicePixelRatio);R.shadowMap.enabled=true;R.setSize(m.clientWidth,m.clientHeight);m.appendChild(R.domElement);R.domElement.style.cssText='position:absolute;inset:0;width:100%;height:100%';
  scn=new THREE.Scene();scn.background=new THREE.Color(0x14161a);cam=new THREE.PerspectiveCamera(45,m.clientWidth/Math.max(1,m.clientHeight),.05,100);cam.position.set(4.5,4,6);
  ctl=new OrbitControls(cam,R.domElement);ctl.mouseButtons={LEFT:THREE.MOUSE.ROTATE,MIDDLE:THREE.MOUSE.PAN,RIGHT:THREE.MOUSE.PAN};ctl.screenSpacePanning=true;ctl.enableDamping=true;ctl.maxPolarAngle=Math.PI/2.02;ctl.target.set(0,.4,0);
- scn.add(new THREE.HemisphereLight(0xffffff,0x334,1.1));const d=new THREE.DirectionalLight(0xffffff,2.2);d.position.set(3,6,2);d.castShadow=true;d.shadow.mapSize.set(2048,2048);Object.assign(d.shadow.camera,{left:-8,right:8,top:8,bottom:-8});scn.add(d);
+ initGizmo();scn.add(new THREE.HemisphereLight(0xffffff,0x334,1.1));const d=new THREE.DirectionalLight(0xffffff,2.2);d.position.set(3,6,2);d.castShadow=true;d.shadow.mapSize.set(2048,2048);Object.assign(d.shadow.camera,{left:-8,right:8,top:8,bottom:-8});scn.add(d);
  R.domElement.addEventListener('pointerdown',down3);R.domElement.addEventListener('pointermove',move3);addEventListener('pointerup',()=>{d3=null;ctl.enabled=true});
  (function loop(){requestAnimationFrame(loop);if(view==='2'){ctl.update();R.render(scn,cam)}})();update3()}
-function update3(){if(!R)return;if(floor){scn.remove(floor);scn.remove(grid)}const W=ROOM.w/100,D=ROOM.d/100;floor=new THREE.Mesh(new THREE.PlaneGeometry(W,D),new THREE.MeshStandardMaterial({color:0x2a2e36,roughness:.9}));floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scn.add(floor);grid=new THREE.GridHelper(Math.max(W,D),Math.round(Math.max(W,D)*2),0x4a5160,0x30353d);scn.add(grid);for(const [id,o] of [...objs]){if(!byId(id)){scn.remove(o);objs.delete(id)}}A.forEach(sync3)}
+function update3(){if(!R)return;if(floor){scn.remove(floor);scn.remove(grid)}const W=ROOM.w/100,D=ROOM.d/100;floor=new THREE.Mesh(new THREE.PlaneGeometry(W,D),new THREE.MeshStandardMaterial({color:0x2a2e36,roughness:.9}));floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scn.add(floor);grid=new THREE.GridHelper(Math.max(W,D),Math.round(Math.max(W,D)*2),0x4a5160,0x30353d);scn.add(grid);for(const [id,o] of [...objs]){if(!byId(id)){if(tc&&tc.object===o)tc.detach();scn.remove(o);objs.delete(id)}}A.forEach(sync3);updGizmo()}
 const wpos=a=>[(a.x-ROOM.w/2)/100,(a.y-ROOM.d/2)/100];
 function sync3(a){if(!R||!a)return;let o=objs.get(a.id);if(o&&o.userData.glb!==!!a.glb){scn.remove(o);objs.delete(a.id);o=null}
  if(!o){o=new THREE.Group();o.userData={a,glb:!!a.glb};scn.add(o);objs.set(a.id,o);
@@ -337,15 +358,15 @@ function sync3(a){if(!R||!a)return;let o=objs.get(a.id);if(o&&o.userData.glb!==!
   else{const p=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial({color:a.color,transparent:true,opacity:.6}));p.castShadow=true;o.add(p);o.userData.box=p}}
  o.visible=a.include;const W=a.w/100,D=a.d/100,H=a.h/100;
  if(o.userData.box){o.userData.box.scale.set(W,H,D);o.userData.box.position.y=H/2}
- else if(o.userData.inner){const sz=o.userData.inner.userData.size,k=Math.min(W/(sz.x||1),D/(sz.z||1));o.userData.inner.scale.setScalar(k)}
- const[x,z]=wpos(a);o.position.set(x,elev(a)/100,z);o.rotation.y=-a.rot*Math.PI/180;
+ else if(o.userData.inner){const sz=o.userData.inner.userData.size;if(a.fit==='axis')o.userData.inner.scale.set(W/(sz.x||1),H/(sz.y||1),D/(sz.z||1));else{const k=Math.min(W/(sz.x||1),D/(sz.z||1));o.userData.inner.scale.setScalar(k)}}
+ const[x,z]=wpos(a);o.position.set(x,(elev(a)+(a.lift||0))/100,z);o.rotation.y=-a.rot*Math.PI/180;
  o.traverse(c=>{if(c.isMesh){if(a.glb)c.material=idMode?(c.userData.idm||(c.userData.idm=new THREE.MeshBasicMaterial({color:a.color}))):(c.userData.orig||c.material);else c.material.color.set(a.color)}})}
 let d3=null;const pl=new THREE.Plane(new THREE.Vector3(0,1,0),0);
 function setRay(e){const r=R.domElement.getBoundingClientRect();ray.setFromCamera(new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1),cam)}
-function down3(e){if(e.button!==0)return;setRay(e);const hit=ray.intersectObjects([...objs.values()].filter(o=>o.visible),true)[0];if(!hit)return;let o=hit.object;while(o&&!o.userData.a)o=o.parent;if(!o)return;const a=o.userData.a;
+function down3(e){if(e.button!==0)return;if(tc&&(tc.axis||tc.dragging))return;setRay(e);const hit=ray.intersectObjects([...objs.values()].filter(o=>o.visible),true)[0];if(!hit)return;let o=hit.object;while(o&&!o.userData.a)o=o.parent;if(!o)return;const a=o.userData.a;
  if(e.shiftKey||e.ctrlKey){pick(a.id,true);return}if(!SEL.has(a.id)){SEL.clear();SEL.add(a.id)}sel=A.indexOf(a);pushUndo();ctl.enabled=false;const p=new THREE.Vector3();ray.ray.intersectPlane(pl,p);d3={o,dx:o.position.x-p.x,dz:o.position.z-p.z};renderGallery();inspector();renderLayers();draw2()}
 function move3(e){if(!d3)return;setRay(e);const p=new THREE.Vector3();if(!ray.ray.intersectPlane(pl,p))return;const a=d3.o.userData.a;a.x=Math.max(0,Math.min(ROOM.w,(p.x+d3.dx)*100+ROOM.w/2));a.y=Math.max(0,Math.min(ROOM.d,(p.z+d3.dz)*100+ROOM.d/2));sync3(a);inspector();draw2()}
-const HINT={1:'Detected objects: click to select, shift-click (range) or ctrl-click (toggle) for several. Untick "keep" to drop an object. Refine until each 2D image is one clean, complete object, then confirm.',2:'Top-down (left): drag blocks · shift-click / drag-select several · white corner = resize · yellow corner = rotate (shift = 15° steps) · wheel = scale, shift+wheel = rotate · Ctrl+Z / Ctrl+Y undo/redo.   3D (right): drag objects on the floor · drag empty space = rotate · right/middle-drag = pan · wheel = zoom.'};
+const HINT={1:'Detected objects: click to select, shift-click (range) or ctrl-click (toggle) for several. Untick "keep" to drop an object. Refine until each 2D image is one clean, complete object, then confirm.',2:'Top-down (left): drag blocks · shift-click / drag-select · white corner = resize · yellow corner = rotate (shift = 15° steps) · Ctrl+Z / Ctrl+Y.   3D (right): click an object, then use the gizmo: G move (X/Y/Z arrows), R rotate, S scale · snap + step sizes in the toolbar · drag empty space = orbit · right-drag = pan · wheel = zoom.'};
 function show(v){if(v==='2'&&!confirmed)return;view=v;$('t1w').style.display=v==='1'?'flex':'none';$('gal').style.display=v==='1'?'grid':'none';$('galbar').style.display=v==='1'?'flex':'none';$('lay').style.display=v==='2'?'flex':'none';$('t1').classList.toggle('on',v==='1');$('t2').classList.toggle('on',v==='2');$('hint').textContent=HINT[v];
  if(v==='2'){if(!R)init3();else update3()}requestAnimationFrame(()=>{fit();renderAll()})}
 $('t1').onclick=()=>show('1');$('t2').onclick=()=>show('2');
