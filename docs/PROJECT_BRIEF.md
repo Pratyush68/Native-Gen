@@ -49,12 +49,16 @@ Architecture: browser page (`index.html`, about 500 lines) -> local Python proxy
 Requires Python 3 and a ComfyUI Cloud account with API access. Windows shortcut: `start.bat`.
 
 ## 7. Status and known limits (as of Nov 2, 2026)
-- Working: detect, crop, refine, room structure, layout editor, live 3D view.
-- Mesh output retrieval from Comfy Cloud was still being fixed when the code was last committed. Check the repo README status line before claiming the mesh step is verified end to end.
+- **Confirmed working:** layout editor and live 3D view.
+- **Built but not fully verified on real Comfy Cloud:** detect (the Qwen 3.5 text-generation step has not been tested there; the code falls back through Qwen 3.5 4B, 9B, then Qwen2.5-VL), crop, refine, room structure.
+- **Not verified:** mesh step. Mesh output retrieval from Comfy Cloud was still being fixed at the last commit. Do not claim the pipeline is proven end to end.
 - Sizes are estimated from typical per-category sizes; edit them if known.
 - Not built yet: one-click GLB scene export, detecting items on or inside furniture, optional wall perspective flatten, undo/restore for walls and openings, real-world scale from a reference object.
 - TRELLIS.2 weights licence should be checked before commercial use.
 - Security: a Comfy API key was exposed during development; revoke and rotate it.
+
+### Workflow files in the repo
+Only two graphs are exported as JSON in `workflows/`: `detect_workflow.json` (SAM3_Detect, crop by boxes, background removal) and `mesh_workflow.json` (54-node TRELLIS.2 chain). The other stages are ComfyUI graphs built in code inside `index.html` and submitted to Comfy Cloud: the Qwen 3.5 detection graph, and the Qwen-Image-Edit 2511 refine graph (UNETLoader + Lightning LoRA 4-step, TextEncodeQwenImageEditPlus, KSampler). Room-structure detection reuses the SAM graph and its refine reuses the Qwen-Image-Edit graph. So every stage is a ComfyUI graph, but only two have standalone JSON exports so far. Exporting the rest is an easy to-do.
 
 ## 8. Build log (git history, all Oct 30 unless noted)
 Photo to editable 3D room (initial) -> colour-coded editable detection boxes -> box editing, duplicate filter -> show/restore unticked boxes -> 3D layout gizmo with snapping -> per-asset prompt and regenerate with version history -> TRELLIS graph fix -> room structure (floor/walls/ceiling, openings) -> flat wall textures -> two-step input (Detect assets then Crop assets) -> keep/remove wall-mounted toggle -> key from `key.txt` + `start.bat` -> Qwen 3.5 for detection (Qwen2.5-VL TextGenerate errors on Cloud) -> Oct 31: README, GIFs, overview video.
